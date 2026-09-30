@@ -1,0 +1,404 @@
+/* Admin console. One loud element (the breaker), everything else quiet. */
+.page {
+  --ink: #17212c;
+  --muted: #58636f;
+  --canvas: #e6e9ec;
+  --surface: #ffffff;
+  --line: #cbd2d9;
+  --open: #12684a;
+  --open-wash: #d6ede3;
+  --paused: #8a5200;
+  --paused-wash: #f5e2b5;
+  --danger: #a8261b;
+  --danger-wash: #f8dcd8;
+  --focus: #2d5bd7;
+
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-archivo), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.shell {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 4rem;
+}
+
+/* Header */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.wallet {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9375rem;
+}
+
+.walletAddress {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.walletNetwork {
+  color: var(--muted);
+}
+
+/* Buttons */
+.button,
+.buttonQuiet {
+  font: inherit;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 0.625rem 1rem;
+  cursor: pointer;
+  border: 1px solid var(--ink);
+  text-decoration: none;
+  display: inline-block;
+}
+
+.button {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.buttonQuiet {
+  background: transparent;
+  color: var(--ink);
+}
+
+.button:disabled,
+.buttonQuiet:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.button:focus-visible,
+.buttonQuiet:focus-visible,
+.switch:focus-visible,
+.input:focus-visible,
+.link:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.link {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+
+/* Gate notice: why controls are locked, with the one action that unlocks them */
+.gate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+  background: var(--surface);
+  border-left: 4px solid var(--ink);
+  border-radius: 4px;
+}
+
+.gate p {
+  margin: 0;
+  max-width: 38rem;
+}
+
+.errorText {
+  color: var(--danger);
+  margin: 0.5rem 0 0;
+}
+
+/* The breaker */
+.breaker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem 2rem;
+  padding: 2.25rem 2rem 2rem;
+  border-radius: 10px;
+  margin-bottom: 1.25rem;
+  transition: background-color 400ms ease, color 400ms ease;
+}
+
+.breakerOpen {
+  background: var(--open-wash);
+  color: var(--open);
+}
+
+.breakerPaused {
+  background: var(--paused-wash);
+  color: var(--paused);
+}
+
+.breakerUnknown {
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.breakerState {
+  margin: 0;
+  font-size: clamp(2.25rem, 7vw, 4.25rem);
+  line-height: 0.95;
+  font-weight: 800;
+  font-stretch: 125%;
+  letter-spacing: -0.01em;
+}
+
+.breakerHint {
+  margin: 0.75rem 0 0;
+  max-width: 30rem;
+  color: var(--ink);
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.5rem 1.25rem 0.5rem 0.5rem;
+  cursor: pointer;
+}
+
+.switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.track {
+  position: relative;
+  width: 3.5rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: var(--open);
+  transition: background-color 250ms ease;
+}
+
+.trackOff {
+  background: var(--paused);
+}
+
+.thumb {
+  position: absolute;
+  top: 0.25rem;
+  left: 1.75rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--surface);
+  transition: left 250ms ease;
+}
+
+.trackOff .thumb {
+  left: 0.25rem;
+}
+
+/* Lower row */
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1.5rem;
+}
+
+.panelTitle {
+  margin: 0 0 0.25rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.panelIntro {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.current {
+  margin: 0 0 1.25rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.375rem 1rem;
+}
+
+.current dt {
+  color: var(--muted);
+}
+
+.current dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.field {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.fieldLabel {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.375rem;
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.input {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+  max-width: 12rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.unit {
+  color: var(--muted);
+}
+
+.fieldHelp {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.fieldError {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--danger);
+}
+
+.formActions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.details {
+  margin: 0;
+}
+
+.details dt {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.details dd {
+  margin: 0 0 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.missing {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Transaction notice */
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.875rem 1.25rem;
+  margin-bottom: 1.25rem;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.notice p {
+  margin: 0;
+}
+
+.noticeOk {
+  border-color: var(--open);
+}
+
+.noticeFail {
+  background: var(--danger-wash);
+  border-color: var(--danger);
+}
+
+.spinner {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-right: 0.5rem;
+  vertical-align: -0.125rem;
+  border: 2px solid var(--line);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .breaker {
+    padding: 1.75rem 1.25rem 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breaker,
+  .track,
+  .thumb {
+    transition: none;
+  }
+  .spinner {
+    animation-duration: 2400ms;
+  }
+}
