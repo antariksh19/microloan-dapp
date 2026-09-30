@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { ethers } from "ethers";
-import { getContractInstance } from "../utils/contract";
+import { getContractInstance } from "../../utils/contract";
 
 export default function Home() {
   const [account, setAccount] = useState("");
