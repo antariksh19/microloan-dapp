@@ -3,24 +3,19 @@
 import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
 import SharedLayout from "../../components/SharedLayout";
+import { useWallet } from "@/hooks/useWallet";
 import contractData from "@/constants/contractAddress.json";
+import MicroLoanABI from "@/constants/MicroLoanABI.json";
 
 const CONTRACT_ADDRESS = contractData?.address || contractData;
-const ABI = [
-  "function loanCounter() view returns (uint256)",
-  "function loans(uint256) view returns (address borrower, address lender, uint256 principal, uint256 repaymentAmount, uint256 dueDate, uint8 status)",
-  "function requestLoan(uint256 principal, uint256 repaymentAmount, uint256 dueDate) returns (uint256)",
-  "function withdrawToBorrower(uint256 loanId)",
-  "function repay(uint256 loanId) payable"
-];
-const SEPOLIA_CHAIN_ID = "0xaa36a7";
+const ABI = MicroLoanABI.abi || MicroLoanABI;
 const STATUS = { Requested: 0, Funded: 1, Withdrawn: 2, Repaid: 3, Defaulted: 4 };
 
 export default function BorrowerDashboard() {
-  const [account, setAccount] = useState("");
+  const { account, connectWallet, walletError, setWalletError, getProvider, switchToSepolia } = useWallet();
+  
   const [walletBalance, setWalletBalance] = useState("0");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [pendingRequests, setPendingRequests] = useState([]);
   const [activeLoans, setActiveLoans] = useState([]);
   const [stats, setStats] = useState({ totalBorrowed: "0", activeCount: 0, totalDue: "0" });
@@ -41,28 +36,9 @@ export default function BorrowerDashboard() {
     ? (Number(principal) + Number(lenderReward)).toFixed(4)
     : "0.0000";
 
-  const getProvider = () => {
-    if (typeof window !== "undefined" && window.ethereum) return new ethers.BrowserProvider(window.ethereum);
-    throw new Error("MetaMask is not installed.");
-  };
-
-  const switchToSepolia = async () => {
-    if (!window.ethereum) return;
-    try {
-      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: SEPOLIA_CHAIN_ID }] });
-    } catch (switchError) {
-      if (switchError.code === 4902) {
-        await window.ethereum.request({
-          method: "wallet_addEthereumChain",
-          params: [{ chainId: SEPOLIA_CHAIN_ID, chainName: "Sepolia Test Network", nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://sepolia.infura.io/v3/"], blockExplorerUrls: ["https://sepolia.etherscan.io"] }],
-        });
-      }
-    }
-  };
-
   const loadLoans = useCallback(async (walletAddress) => {
     try {
-      setLoading(true); setError("");
+      setLoading(true); setWalletError("");
       const provider = getProvider();
       const network = await provider.getNetwork();
       if (network.chainId !== 11155111n) { await switchToSepolia(); return; }
@@ -95,34 +71,42 @@ export default function BorrowerDashboard() {
       }
       setPendingRequests(pending); setActiveLoans(active);
       setStats({ totalBorrowed: ethers.formatEther(totalBorrowedWei), activeCount: active.length, totalDue: ethers.formatEther(totalDueWei) });
-    } catch (err) { setError(err.message || "Failed to fetch data."); } finally { setLoading(false); }
-  }, []);
+    } catch (err) { setWalletError(err.message || "Failed to fetch data."); } finally { setLoading(false); }
+  }, [getProvider, switchToSepolia, setWalletError]);
 
-  const connectWallet = async () => {
-    try {
-      setError(""); if (!window.ethereum) throw new Error("MetaMask not found.");
-      const provider = getProvider();
-      const accounts = await provider.send("eth_requestAccounts", []);
-      if (accounts.length > 0) { setAccount(accounts[0]); await loadLoans(accounts[0]); }
-    } catch (err) { setError(err.message || "Wallet connection failed."); }
-  };
+  useEffect(() => {
+    if (account) {
+      loadLoans(account);
+    } else {
+      setPendingRequests([]);
+      setActiveLoans([]);
+      setWalletBalance("0");
+    }
+  }, [account, loadLoans]);
 
   const handleRequestLoan = async (e) => {
     e.preventDefault();
-    if (!principal || !lenderReward || !dueDate) return setError("Please fill out all fields.");
+    if (!principal || !lenderReward || !dueDate) return setWalletError("Please fill out all fields.");
     try {
-      setLoading(true); setError("");
+      setLoading(true); setWalletError("");
       const provider = getProvider(); const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
-      const principalWei = ethers.parseEther(principal.toString());
-      const repaymentWei = ethers.parseEther(calculatedRepayment.toString());
-      const dueDateTimestamp = Math.floor(new Date(dueDate).getTime() / 1000);
+      
+      const safePrincipalStr = Number(principal).toFixed(18);
+      const safeRepaymentStr = (Number(principal) + Number(lenderReward)).toFixed(18);
+      const principalWei = ethers.parseEther(safePrincipalStr);
+      const repaymentWei = ethers.parseEther(safeRepaymentStr);
+      
+      const dateObj = new Date(dueDate);
+      dateObj.setHours(23, 59, 59, 999);
+      const dueDateTimestamp = Math.floor(dateObj.getTime() / 1000);
+
       const tx = await contract.requestLoan(principalWei, repaymentWei, dueDateTimestamp);
       await tx.wait();
       alert("Loan request submitted!");
       setPrincipal(""); setLenderReward(""); setDueDate(""); setShowRequestModal(false);
       await loadLoans(account);
-    } catch (err) { setError(err.reason || err.message || "Transaction failed."); } finally { setLoading(false); }
+    } catch (err) { setWalletError(err.reason || err.message || "Transaction failed."); } finally { setLoading(false); }
   };
 
   const handleWithdraw = async () => {
@@ -143,22 +127,12 @@ export default function BorrowerDashboard() {
       setLoading(true);
       const provider = getProvider(); const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
-      const tx = await contract.repay(selectedLoan.id, { value: ethers.parseEther(repayAmount) });
+      const tx = await contract.repay(selectedLoan.id, { value: ethers.parseEther(Number(repayAmount).toFixed(18)) });
       await tx.wait();
       alert(`Loan #${selectedLoan.id} repaid!`);
       setShowRepayModal(false); setRepayAmount(""); await loadLoans(account);
     } catch (err) { alert(err.reason || "Repayment failed."); } finally { setLoading(false); }
   };
-
-  useEffect(() => {
-    if (window.ethereum) {
-      window.ethereum.on("accountsChanged", (accounts) => {
-        if (accounts.length > 0) { setAccount(accounts[0]); loadLoans(accounts[0]); } 
-        else { setAccount(""); setPendingRequests([]); setActiveLoans([]); }
-      });
-      window.ethereum.on("chainChanged", () => window.location.reload());
-    }
-  }, [loadLoans]);
 
   const getStatusText = (status) => Object.keys(STATUS).find(key => STATUS[key] === status) || "Unknown";
   const getStatusStyle = (status) => {
@@ -178,7 +152,7 @@ export default function BorrowerDashboard() {
       title="Borrower Dashboard" 
       subtitle="Manage your loan requests and active repayments"
     >
-      {error && <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700 border border-red-200">{error}</div>}
+      {walletError && <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700 border border-red-200">{walletError}</div>}
 
       <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
         <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">

@@ -3,23 +3,19 @@
 import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
 import SharedLayout from "../../components/SharedLayout";
+import { useWallet } from "@/hooks/useWallet";
 import contractData from "@/constants/contractAddress.json";
+import MicroLoanABI from "@/constants/MicroLoanABI.json";
 
 const CONTRACT_ADDRESS = contractData?.address || contractData;
-const ABI = [
-  "function loanCounter() view returns (uint256)",
-  "function loans(uint256) view returns (address borrower, address lender, uint256 principal, uint256 repaymentAmount, uint256 dueDate, uint8 status)",
-  "function fundLoan(uint256 loanId) payable"
-];
-
-const SEPOLIA_CHAIN_ID = "0xaa36a7";
+const ABI = MicroLoanABI.abi || MicroLoanABI;
 const STATUS = { Requested: 0, Funded: 1, Withdrawn: 2, Repaid: 3, Defaulted: 4 };
 
 export default function LenderDashboard() {
-  const [account, setAccount] = useState("");
+  const { account, connectWallet, walletError, setWalletError, getProvider, switchToSepolia } = useWallet();
+  
   const [walletBalance, setWalletBalance] = useState("0");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   
   const [availableRequests, setAvailableRequests] = useState([]);
   const [myInvestments, setMyInvestments] = useState([]);
@@ -29,14 +25,9 @@ export default function LenderDashboard() {
   const [selectedLoan, setSelectedLoan] = useState(null);
   const [showFundModal, setShowFundModal] = useState(false);
 
-  const getProvider = () => {
-    if (typeof window !== "undefined" && window.ethereum) return new ethers.BrowserProvider(window.ethereum);
-    throw new Error("MetaMask is not installed.");
-  };
-
   const loadLenderData = useCallback(async (walletAddress) => {
     try {
-      setLoading(true); setError("");
+      setLoading(true); setWalletError("");
       const provider = getProvider();
       
       const balance = await provider.getBalance(walletAddress);
@@ -84,20 +75,18 @@ export default function LenderDashboard() {
         activeLoans: investments.filter(l => l.status === STATUS.Funded || l.status === STATUS.Withdrawn).length, 
         expectedEarnings: ethers.formatEther(expectedEarningsWei) 
       });
-    } catch (err) { setError("Failed to fetch data from contract."); } finally { setLoading(false); }
-  }, []);
+    } catch (err) { setWalletError("Failed to fetch data from contract."); } finally { setLoading(false); }
+  }, [getProvider, setWalletError]);
 
-  const connectWallet = async () => {
-    try {
-      setError(""); if (!window.ethereum) throw new Error("MetaMask not found.");
-      const provider = getProvider();
-      const accounts = await provider.send("eth_requestAccounts", []);
-      if (accounts.length > 0) { 
-        setAccount(accounts[0]); 
-        await loadLenderData(accounts[0]); 
-      }
-    } catch (err) { setError(err.message || "Wallet connection failed."); }
-  };
+  useEffect(() => {
+    if (account) {
+      loadLenderData(account);
+    } else {
+      setAvailableRequests([]);
+      setMyInvestments([]);
+      setWalletBalance("0");
+    }
+  }, [account, loadLenderData]);
 
   const handleFundLoan = async () => {
     try {
@@ -114,15 +103,6 @@ export default function LenderDashboard() {
       await loadLenderData(account);
     } catch (err) { alert(err.reason || "Funding failed."); } finally { setLoading(false); }
   };
-
-  useEffect(() => {
-    if (window.ethereum) {
-      window.ethereum.on("accountsChanged", (accounts) => {
-        if (accounts.length > 0) { setAccount(accounts[0]); loadLenderData(accounts[0]); } 
-        else { setAccount(""); setAvailableRequests([]); setMyInvestments([]); }
-      });
-    }
-  }, [loadLenderData]);
 
   const getStatusText = (status) => Object.keys(STATUS).find(key => STATUS[key] === status) || "Unknown";
   const getStatusStyle = (status) => {
@@ -144,9 +124,8 @@ export default function LenderDashboard() {
       title="Lender Dashboard" 
       subtitle="Discover and fund micro-loan investments"
     >
-      {error && <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700 border border-red-200">{error}</div>}
+      {walletError && <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700 border border-red-200">{walletError}</div>}
 
-      {/* Stats Row */}
       <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
         <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
           <p className="text-sm font-medium text-slate-500">Wallet Balance</p>
@@ -166,7 +145,6 @@ export default function LenderDashboard() {
         </div>
       </section>
 
-      {/* Navigation Tabs */}
       <div className="flex space-x-6 border-b border-slate-200 mb-8 px-2">
         {[
           { id: "dashboard", label: "Overview" },
@@ -187,7 +165,6 @@ export default function LenderDashboard() {
         ))}
       </div>
 
-      {/* Available Loan Requests Table */}
       {(activeTab === "dashboard" || activeTab === "available") && (
         <section className="mb-8 rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden">
           <div className="border-b border-slate-100 p-6">
@@ -223,7 +200,6 @@ export default function LenderDashboard() {
         </section>
       )}
 
-      {/* My Investments Table */}
       {(activeTab === "dashboard" || activeTab === "investments") && (
         <section className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden">
           <div className="border-b border-slate-100 p-6">
@@ -252,7 +228,6 @@ export default function LenderDashboard() {
         </section>
       )}
 
-      {/* Fund Loan Modal */}
       {showFundModal && selectedLoan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl">

@@ -1,86 +1,89 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+"use client";
+import { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
-import { SEPOLIA } from "@/constants/adminConfig";
 
-const noSubscribe = () => () => {};
+const SEPOLIA_CHAIN_ID = "0xaa36a7";
 
 export function useWallet() {
-  // null on the server, true/false in the browser. Avoids a hydration mismatch.
-  const hasWallet = useSyncExternalStore(
-    noSubscribe,
-    () => Boolean(window.ethereum),
-    () => null
-  );
-  const [account, setAccount] = useState(null);
-  const [chainId, setChainId] = useState(null);
-  const [connecting, setConnecting] = useState(false);
-  const [error, setError] = useState(null);
+  const [account, setAccount] = useState("");
+  const [walletError, setWalletError] = useState("");
 
-  useEffect(() => {
-    const eth = window.ethereum;
-    if (!eth) return;
-
-    // eth_accounts never opens a popup; it only returns already-approved accounts.
-    eth.request({ method: "eth_accounts" }).then((a) => setAccount(a[0] ?? null)).catch(() => {});
-    eth.request({ method: "eth_chainId" }).then((id) => setChainId(BigInt(id))).catch(() => {});
-
-    const onAccounts = (a) => setAccount(a[0] ?? null);
-    const onChain = (id) => setChainId(BigInt(id));
-    eth.on?.("accountsChanged", onAccounts);
-    eth.on?.("chainChanged", onChain);
-    return () => {
-      eth.removeListener?.("accountsChanged", onAccounts);
-      eth.removeListener?.("chainChanged", onChain);
-    };
-  }, []);
-
-  const connect = useCallback(async () => {
-    if (!window.ethereum) return;
-    setConnecting(true);
-    setError(null);
-    try {
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      setAccount(accounts[0] ?? null);
-    } catch (e) {
-      if (e?.code === 4001) setError("You declined the connection request.");
-      else if (e?.code === -32002) setError("MetaMask already has a request open. Check the extension.");
-      else setError(e?.message || "Couldn't connect to MetaMask.");
-    } finally {
-      setConnecting(false);
+  // Memoize to prevent infinite re-renders in consumer components
+  const getProvider = useCallback(() => {
+    if (typeof window !== "undefined" && window.ethereum) {
+      return new ethers.BrowserProvider(window.ethereum);
     }
+    throw new Error("MetaMask is not installed.");
   }, []);
 
   const switchToSepolia = useCallback(async () => {
-    setError(null);
+    if (!window.ethereum) return;
     try {
-      await window.ethereum.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: SEPOLIA.hexChainId }],
-      });
-    } catch (e) {
-      setError(
-        e?.code === 4001
-          ? "You declined the network switch."
-          : "Couldn't switch networks. Turn on test networks in MetaMask settings, then pick Sepolia."
-      );
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: SEPOLIA_CHAIN_ID }] });
+    } catch (switchError) {
+      if (switchError.code === 4902) {
+        await window.ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [{ 
+            chainId: SEPOLIA_CHAIN_ID, 
+            chainName: "Sepolia Test Network", 
+            nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 }, 
+            rpcUrls: ["https://sepolia.infura.io/v3/"], 
+            blockExplorerUrls: ["https://sepolia.etherscan.io"] 
+          }],
+        });
+      } else {
+        throw switchError;
+      }
     }
   }, []);
 
-  // A fresh provider each time, so a network change never leaves a stale one behind.
-  const getSigner = useCallback(async () => {
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    return provider.getSigner();
-  }, []);
+  const connectWallet = useCallback(async () => {
+    try {
+      setWalletError("");
+      if (!window.ethereum) throw new Error("MetaMask not found.");
+      
+      const provider = getProvider();
+      const network = await provider.getNetwork();
+      if (network.chainId !== 11155111n) {
+        await switchToSepolia();
+      }
 
-  return {
-    hasWallet,
-    account,
-    chainId,
-    onSepolia: chainId === SEPOLIA.chainId,
-    connecting,
-    error,
-    connect,
-    switchToSepolia,
-    getSigner,
-  };
+      const accounts = await provider.send("eth_requestAccounts", []);
+      if (accounts.length > 0) setAccount(accounts[0]);
+    } catch (err) {
+      setWalletError(err.message || "Wallet connection failed.");
+    }
+  }, [getProvider, switchToSepolia]);
+
+  useEffect(() => {
+    if (!window.ethereum) return;
+
+    const checkConnection = async () => {
+      try {
+        const provider = getProvider();
+        const accounts = await provider.send("eth_accounts", []);
+        if (accounts.length > 0) setAccount(accounts[0]);
+      } catch (e) {
+        console.error("Connection check failed", e);
+      }
+    };
+    checkConnection();
+
+    const handleAccountsChanged = (accounts) => {
+      if (accounts.length > 0) setAccount(accounts[0]);
+      else setAccount("");
+    };
+    const handleChainChanged = () => window.location.reload();
+
+    window.ethereum.on("accountsChanged", handleAccountsChanged);
+    window.ethereum.on("chainChanged", handleChainChanged);
+
+    return () => {
+      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
+      window.ethereum.removeListener("chainChanged", handleChainChanged);
+    };
+  }, [getProvider]);
+
+  return { account, connectWallet, walletError, setWalletError, getProvider, switchToSepolia };
 }
