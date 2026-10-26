@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 contract MicroLoan {
-    enum Status { Requested, Funded, Withdrawn, Repaid, Defaulted }
+    enum Status { Requested, Funded, Withdrawn, Repaid, Defaulted, Cancelled }
 
     struct Loan {
         address payable borrower;
@@ -35,6 +35,7 @@ contract MicroLoan {
     event Withdrawn(uint256 indexed loanId, address indexed borrower, uint256 principal);
     event Repaid(uint256 indexed loanId, address indexed borrower, uint256 repayment);
     event Defaulted(uint256 indexed loanId, address indexed borrower);
+    event Cancelled(uint256 indexed loanId, address indexed borrower);
     event PausedStateChanged(bool isPaused);
     event MaxLoanLimitUpdated(uint256 newLimit);
 
@@ -54,7 +55,10 @@ contract MicroLoan {
     }
 
     function requestLoan(uint256 _principal, uint256 _repayment, uint256 _duration) external whenNotPaused {
+        require(_principal > 0, "Principal must be greater than zero");
         require(_principal <= maxLoanAmount, "Requested amount exceeds admin maximum limit");
+        require(_repayment >= _principal, "Repayment must cover the principal");
+        require(_duration > 0, "Duration must be greater than zero");
         
         loanCounter++;
         
@@ -68,6 +72,18 @@ contract MicroLoan {
         });
 
         emit Requested(loanCounter, msg.sender, _principal);
+    }
+
+    // Borrower can withdraw an unfunded request. Allowed while paused.
+    function cancelLoan(uint256 _loanId) external {
+        Loan storage loan = loans[_loanId];
+
+        require(loan.status == Status.Requested, "Loan not in Requested state");
+        require(msg.sender == loan.borrower, "Only borrower can cancel");
+
+        loan.status = Status.Cancelled;
+
+        emit Cancelled(_loanId, msg.sender);
     }
 
     function fund(uint256 _loanId) external payable whenNotPaused {
@@ -97,7 +113,8 @@ contract MicroLoan {
         emit Withdrawn(_loanId, msg.sender, loan.principal);
     }
 
-    function repay(uint256 _loanId) external payable whenNotPaused {
+    // Intentionally not pausable: a pause must not make a borrower miss the due date.
+    function repay(uint256 _loanId) external payable {
         Loan storage loan = loans[_loanId];
         
         require(loan.status == Status.Withdrawn, "Loan not active");
@@ -112,7 +129,7 @@ contract MicroLoan {
         emit Repaid(_loanId, loan.borrower, msg.value);
     }
 
-    function markDefault(uint256 _loanId) external whenNotPaused {
+    function markDefault(uint256 _loanId) external {
         Loan storage loan = loans[_loanId];
         
         require(loan.status == Status.Withdrawn, "Loan not active");
