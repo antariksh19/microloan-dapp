@@ -5,7 +5,6 @@ import PauseCard from "./PauseCard";
 import LimitCard from "./LimitCard";
 import TxNotice from "./TxNotice";
 import { card, cardTitle, smallButton, link } from "./ui";
-import { useWallet } from "@/hooks/useWallet";
 import { useAdminContract } from "@/hooks/useAdminContract";
 import { addressUrl, shortAddress } from "@/utils/web3Helpers";
 
@@ -29,18 +28,7 @@ function getGate(wallet, admin) {
 
 function WalletButton({ wallet }) {
   if (wallet.hasWallet === false) return null;
-  if (!wallet.account) {
-    return (
-      <button
-        type="button"
-        onClick={wallet.connect}
-        disabled={wallet.connecting}
-        className={`${smallButton} bg-blue-600 hover:bg-blue-700`}
-      >
-        {wallet.connecting ? "Waiting for MetaMask…" : "Connect Wallet"}
-      </button>
-    );
-  }
+  if (!wallet.account) return null; // the header button handles connecting
   if (!wallet.onSepolia) {
     return (
       <button type="button" onClick={wallet.switchToSepolia} className={`${smallButton} bg-amber-600 hover:bg-amber-700`}>
@@ -48,11 +36,7 @@ function WalletButton({ wallet }) {
       </button>
     );
   }
-  return (
-    <span className="px-5 py-2.5 bg-blue-50 text-blue-700 font-medium text-sm rounded-lg border border-blue-100">
-      {shortAddress(wallet.account)} ✓
-    </span>
-  );
+  return null;
 }
 
 function StatCard({ title, value, note, noteClass = "text-slate-500" }) {
@@ -65,8 +49,7 @@ function StatCard({ title, value, note, noteClass = "text-slate-500" }) {
   );
 }
 
-export default function AdminDashboard() {
-  const wallet = useWallet();
+export default function AdminDashboard({ wallet }) {
   const admin = useAdminContract(wallet);
   const gate = getGate(wallet, admin);
   const canAct = !gate && !admin.pending;
@@ -80,27 +63,8 @@ export default function AdminDashboard() {
         : { value: "Running", note: "Accepting loan activity", cls: "text-emerald-600" };
 
   return (
-    <div className="min-h-screen bg-[#f3f6f9] text-slate-800 font-sans">
-      <aside className="fixed left-0 top-0 hidden h-screen w-64 bg-[#0b1329] md:block text-white">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold tracking-tight">MicroLoan</h1>
-          <p className="text-xs text-slate-400 mt-1">Admin Portal</p>
-        </div>
-        <nav className="mt-4 px-3 space-y-1">
-          <span className="block w-full px-4 py-3 text-left text-sm rounded-xl bg-blue-600 text-white font-semibold">
-            Platform Controls
-          </span>
-        </nav>
-      </aside>
-
-      <main className="min-h-screen md:ml-64 p-4 sm:p-8 space-y-6">
-        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white px-6 py-5 rounded-2xl border border-slate-200/80 shadow-xs gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">Admin Dashboard</h2>
-            <p className="text-sm text-slate-500 mt-0.5">Pause the platform and set the maximum loan amount</p>
-          </div>
-          <WalletButton wallet={wallet} />
-        </header>
+    <div className="space-y-6">
+        <WalletButton wallet={wallet} />
 
         {gate && (
           <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 font-medium flex flex-wrap items-center justify-between gap-3">
@@ -189,7 +153,6 @@ export default function AdminDashboard() {
             </div>
           </dl>
         </section>
-      </main>
     </div>
   );
 }

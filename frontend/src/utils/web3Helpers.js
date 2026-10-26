@@ -25,10 +25,20 @@ export function getContractAddress() {
 
 const RPC_URL = process.env.NEXT_PUBLIC_SEPOLIA_RPC_URL;
 
+// One shared read-only provider, so polling doesn't create a new one every time.
+let rpcProvider = null;
+
 // A provider that is guaranteed to be on Sepolia, or null.
 // Prefers the shared Alchemy/Infura URL so reads work without a wallet.
 export async function getSepoliaReader() {
-  if (RPC_URL) return new ethers.JsonRpcProvider(RPC_URL, Number(SEPOLIA.chainId));
+  if (RPC_URL) {
+    if (!rpcProvider) {
+      rpcProvider = new ethers.JsonRpcProvider(RPC_URL, Number(SEPOLIA.chainId), {
+        staticNetwork: true,
+      });
+    }
+    return rpcProvider;
+  }
   if (typeof window === "undefined" || !window.ethereum) return null;
   const provider = new ethers.BrowserProvider(window.ethereum);
   const { chainId } = await provider.getNetwork();
@@ -51,15 +61,28 @@ const KNOWN_REASONS = [
   ["Caller is not the admin", "Only the admin wallet can do this."],
   ["Contract is currently paused by admin", "The platform is paused right now. Try again once it's resumed."],
   ["Requested amount exceeds admin maximum limit", "That amount is above the maximum loan amount."],
+  ["Loan not in Requested state", "This loan has already been funded."],
+  ["Must fund the exact principal amount", "The amount sent must equal the loan principal."],
+  ["Borrower cannot fund their own loan", "You can't fund your own loan request."],
+  ["Loan is not funded", "This loan hasn't been funded yet."],
+  ["Only borrower can withdraw", "Only the borrower can withdraw these funds."],
+  ["Loan not active", "This loan is not active."],
+  ["Must pay exact repayment amount", "The amount sent must equal the full repayment."],
+  ["Loan is past due date", "This loan is past its due date and can no longer be repaid."],
+  ["Principal must be greater than zero", "The principal must be more than zero."],
+  ["Repayment must cover the principal", "The repayment can't be less than the principal."],
+  ["Duration must be greater than zero", "Pick a due date in the future."],
+  ["Only borrower can cancel", "Only the borrower can cancel this request."],
+  ["Loan is not yet past due", "This loan is not past its due date yet."],
 ];
 
-// Turns an ethers v6 error into one plain sentence. Safe to reuse in the other UIs.
+// Turns an ethers v6 error into one plain sentence.
 export function describeTxError(err) {
   if (err?.code === "ACTION_REJECTED" || err?.info?.error?.code === 4001) {
     return "You rejected the transaction in MetaMask.";
   }
   if (err?.code === "INSUFFICIENT_FUNDS") {
-    return "This wallet doesn't have enough Sepolia ETH to pay for gas.";
+    return "This wallet doesn't have enough Sepolia ETH to cover the amount plus gas.";
   }
   const text = [err?.reason, err?.shortMessage, err?.info?.error?.message, err?.message]
     .filter(Boolean)

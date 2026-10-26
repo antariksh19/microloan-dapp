@@ -4,15 +4,16 @@ import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
 import SharedLayout from "../../components/SharedLayout";
 import { useWallet } from "@/hooks/useWallet";
-import contractData from "@/constants/contractAddress.json";
-import MicroLoanABI from "@/constants/MicroLoanABI.json";
+import MaintenanceBanner from "@/components/MaintenanceBanner";
+import { MICROLOAN_ABI as ABI, getContractAddress, describeTxError, sameAddress } from "@/utils/web3Helpers";
 
-const CONTRACT_ADDRESS = contractData?.address || contractData;
-const ABI = MicroLoanABI.abi || MicroLoanABI;
-const STATUS = { Requested: 0, Funded: 1, Withdrawn: 2, Repaid: 3, Defaulted: 4 };
+const CONTRACT_ADDRESS = getContractAddress();
+const STATUS = { Requested: 0, Funded: 1, Withdrawn: 2, Repaid: 3, Defaulted: 4, Cancelled: 5 };
 
 export default function BorrowerDashboard() {
-  const { account, connectWallet, walletError, setWalletError, getProvider, switchToSepolia } = useWallet();
+  const { account, connectWallet, walletError, setWalletError, getProvider, switchToSepolia, onSepolia } = useWallet();
+  const [notice, setNotice] = useState("");
+  const [maxLoanWei, setMaxLoanWei] = useState(null);
   
   const [walletBalance, setWalletBalance] = useState("0");
   const [loading, setLoading] = useState(false);
@@ -30,24 +31,31 @@ export default function BorrowerDashboard() {
   const [principal, setPrincipal] = useState("");
   const [lenderReward, setLenderReward] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [repayAmount, setRepayAmount] = useState("");
 
-  const calculatedRepayment = principal && lenderReward 
-    ? (Number(principal) + Number(lenderReward)).toFixed(4)
-    : "0.0000";
+  // Parse typed amounts as exact decimal strings (no floating-point rounding).
+  const toWei = (v) => {
+    try { return ethers.parseEther(String(v).trim()); } catch { return null; }
+  };
+  const principalWeiInput = principal ? toWei(principal) : null;
+  const rewardWeiInput = lenderReward ? toWei(lenderReward) : null;
+  const calculatedRepayment = principalWeiInput !== null && rewardWeiInput !== null
+    ? ethers.formatEther(principalWeiInput + rewardWeiInput)
+    : "0.0";
 
   const loadLoans = useCallback(async (walletAddress) => {
     try {
       setLoading(true); setWalletError("");
       const provider = getProvider();
       const network = await provider.getNetwork();
-      if (network.chainId !== 11155111n) { await switchToSepolia(); return; }
+      if (network.chainId !== 11155111n) { setWalletError("Switch MetaMask to the Sepolia network to continue."); return; }
+      if (!CONTRACT_ADDRESS) { setWalletError("No contract address configured."); return; }
 
       const balance = await provider.getBalance(walletAddress);
       setWalletBalance(Number(ethers.formatEther(balance)).toFixed(4));
 
       const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
       const totalLoans = await contract.loanCounter();
+      setMaxLoanWei(await contract.maxLoanAmount());
 
       const pending = []; const active = [];
       let totalBorrowedWei = 0n; let totalDueWei = 0n;
@@ -55,16 +63,16 @@ export default function BorrowerDashboard() {
       for (let i = 1; i <= Number(totalLoans); i++) {
         try {
           const loan = await contract.loans(i);
-          if (loan.borrower.toLowerCase() === walletAddress.toLowerCase()) {
+          if (sameAddress(loan.borrower, walletAddress)) {
             const status = Number(loan.status);
             const loanData = {
-              id: i, borrower: loan.borrower, principalWei: loan.principal, repaymentWei: loan.repaymentAmount,
-              principal: ethers.formatEther(loan.principal), repayment: ethers.formatEther(loan.repaymentAmount),
+              id: i, borrower: loan.borrower, principalWei: loan.principal, repaymentWei: loan.repayment,
+              principal: ethers.formatEther(loan.principal), repayment: ethers.formatEther(loan.repayment),
               dueDate: new Date(Number(loan.dueDate) * 1000).toLocaleDateString(), status
             };
             if (status === STATUS.Requested) pending.push(loanData);
             else if (status === STATUS.Funded || status === STATUS.Withdrawn) {
-              active.push(loanData); totalBorrowedWei += loan.principal; totalDueWei += loan.repaymentAmount;
+              active.push(loanData); totalBorrowedWei += loan.principal; totalDueWei += loan.repayment;
             }
           }
         } catch (e) { console.error(`Error fetching loan ${i}:`, e); }
@@ -72,17 +80,17 @@ export default function BorrowerDashboard() {
       setPendingRequests(pending); setActiveLoans(active);
       setStats({ totalBorrowed: ethers.formatEther(totalBorrowedWei), activeCount: active.length, totalDue: ethers.formatEther(totalDueWei) });
     } catch (err) { setWalletError(err.message || "Failed to fetch data."); } finally { setLoading(false); }
-  }, [getProvider, switchToSepolia, setWalletError]);
+  }, [getProvider, setWalletError]);
 
   useEffect(() => {
-    if (account) {
+    if (account && onSepolia) {
       loadLoans(account);
     } else {
       setPendingRequests([]);
       setActiveLoans([]);
       setWalletBalance("0");
     }
-  }, [account, loadLoans]);
+  }, [account, onSepolia, loadLoans]);
 
   const handleRequestLoan = async (e) => {
     e.preventDefault();
@@ -92,46 +100,66 @@ export default function BorrowerDashboard() {
       const provider = getProvider(); const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
       
-      const safePrincipalStr = Number(principal).toFixed(18);
-      const safeRepaymentStr = (Number(principal) + Number(lenderReward)).toFixed(18);
-      const principalWei = ethers.parseEther(safePrincipalStr);
-      const repaymentWei = ethers.parseEther(safeRepaymentStr);
-      
+      const principalWei = toWei(principal);
+      const rewardWei = toWei(lenderReward);
+      if (principalWei === null || rewardWei === null || principalWei <= 0n) {
+        return setWalletError("Enter valid amounts (max 18 decimals).");
+      }
+      if (maxLoanWei !== null && principalWei > maxLoanWei) {
+        return setWalletError(`Principal exceeds the maximum loan amount of ${ethers.formatEther(maxLoanWei)} ETH.`);
+      }
+      const repaymentWei = principalWei + rewardWei;
+
+      // The contract takes a duration in seconds, not a date.
       const dateObj = new Date(dueDate);
       dateObj.setHours(23, 59, 59, 999);
-      const dueDateTimestamp = Math.floor(dateObj.getTime() / 1000);
+      const duration = Math.floor(dateObj.getTime() / 1000) - Math.floor(Date.now() / 1000);
+      if (duration <= 0) return setWalletError("Due date must be in the future.");
 
-      const tx = await contract.requestLoan(principalWei, repaymentWei, dueDateTimestamp);
+      const tx = await contract.requestLoan(principalWei, repaymentWei, duration);
       await tx.wait();
-      alert("Loan request submitted!");
+      setNotice("Loan request submitted!");
       setPrincipal(""); setLenderReward(""); setDueDate(""); setShowRequestModal(false);
       await loadLoans(account);
-    } catch (err) { setWalletError(err.reason || err.message || "Transaction failed."); } finally { setLoading(false); }
+    } catch (err) { setWalletError(describeTxError(err)); } finally { setLoading(false); }
   };
 
   const handleWithdraw = async () => {
     try {
-      setLoading(true);
+      setLoading(true); setWalletError(""); setNotice("");
       const provider = getProvider(); const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
       const tx = await contract.withdrawToBorrower(selectedLoan.id);
       await tx.wait();
-      alert(`Funds for Loan #${selectedLoan.id} withdrawn!`);
+      setNotice(`Funds for Loan #${selectedLoan.id} withdrawn!`);
       setShowWithdrawModal(false); await loadLoans(account);
-    } catch (err) { alert(err.reason || "Withdrawal failed."); } finally { setLoading(false); }
+    } catch (err) { setShowWithdrawModal(false); setWalletError(describeTxError(err)); } finally { setLoading(false); }
   };
 
   const handleRepay = async (e) => {
     e.preventDefault();
     try {
-      setLoading(true);
+      setLoading(true); setWalletError(""); setNotice("");
       const provider = getProvider(); const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
-      const tx = await contract.repay(selectedLoan.id, { value: ethers.parseEther(Number(repayAmount).toFixed(18)) });
+      // Always send the exact stored repayment; the contract rejects anything else.
+      const tx = await contract.repay(selectedLoan.id, { value: selectedLoan.repaymentWei });
       await tx.wait();
-      alert(`Loan #${selectedLoan.id} repaid!`);
-      setShowRepayModal(false); setRepayAmount(""); await loadLoans(account);
-    } catch (err) { alert(err.reason || "Repayment failed."); } finally { setLoading(false); }
+      setNotice(`Loan #${selectedLoan.id} repaid!`);
+      setShowRepayModal(false); await loadLoans(account);
+    } catch (err) { setShowRepayModal(false); setWalletError(describeTxError(err)); } finally { setLoading(false); }
+  };
+
+  const handleCancel = async (loan) => {
+    try {
+      setLoading(true); setWalletError(""); setNotice("");
+      const signer = await getProvider().getSigner();
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+      const tx = await contract.cancelLoan(loan.id);
+      await tx.wait();
+      setNotice(`Request #${loan.id} cancelled.`);
+      await loadLoans(account);
+    } catch (err) { setWalletError(describeTxError(err)); } finally { setLoading(false); }
   };
 
   const getStatusText = (status) => Object.keys(STATUS).find(key => STATUS[key] === status) || "Unknown";
@@ -152,6 +180,9 @@ export default function BorrowerDashboard() {
       title="Borrower Dashboard" 
       subtitle="Manage your loan requests and active repayments"
     >
+      <div className="mb-6 empty:hidden"><MaintenanceBanner /></div>
+      {account && !onSepolia && <div className="mb-6 rounded-lg bg-amber-50 p-4 text-sm text-amber-800 border border-amber-200 flex items-center justify-between gap-3"><span>MetaMask is on another network.</span><button onClick={switchToSepolia} className="font-bold underline">Switch to Sepolia</button></div>}
+      {notice && <div className="mb-6 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-700 border border-emerald-200 flex justify-between"><span>{notice}</span><button onClick={() => setNotice("")} className="font-bold">Dismiss</button></div>}
       {walletError && <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700 border border-red-200">{walletError}</div>}
 
       <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
@@ -207,16 +238,17 @@ export default function BorrowerDashboard() {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead className="bg-slate-50/50 text-xs uppercase text-slate-500 font-semibold border-b border-slate-100">
-                <tr><th className="px-6 py-4">Loan ID</th><th className="px-6 py-4">Principal</th><th className="px-6 py-4">Repayment</th><th className="px-6 py-4">Due Date</th><th className="px-6 py-4">Status</th></tr>
+                <tr><th className="px-6 py-4">Loan ID</th><th className="px-6 py-4">Principal</th><th className="px-6 py-4">Repayment</th><th className="px-6 py-4">Due Date</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Action</th></tr>
               </thead>
               <tbody className="text-sm">
-                {pendingRequests.length === 0 ? <tr><td colSpan="5" className="px-6 py-8 text-center text-slate-500">No pending requests.</td></tr> : pendingRequests.map((loan) => (
+                {pendingRequests.length === 0 ? <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">No pending requests.</td></tr> : pendingRequests.map((loan) => (
                   <tr key={loan.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 font-bold text-slate-700">#{loan.id}</td>
                     <td className="px-6 py-4 font-medium">{loan.principal} ETH</td>
                     <td className="px-6 py-4">{loan.repayment} ETH</td>
                     <td className="px-6 py-4 text-slate-500">{loan.dueDate}</td>
                     <td className="px-6 py-4"><span className={`rounded-full px-3 py-1 text-xs font-bold ${getStatusStyle(loan.status)}`}>{getStatusText(loan.status)}</span></td>
+                    <td className="px-6 py-4"><button onClick={() => handleCancel(loan)} disabled={loading} className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-50">Cancel</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -246,7 +278,7 @@ export default function BorrowerDashboard() {
                     <td className="px-6 py-4"><span className={`rounded-full px-3 py-1 text-xs font-bold ${getStatusStyle(loan.status)}`}>{getStatusText(loan.status)}</span></td>
                     <td className="px-6 py-4">
                       {loan.status === STATUS.Funded && <button onClick={() => { setSelectedLoan(loan); setShowWithdrawModal(true); }} className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-600 shadow-sm">Withdraw</button>}
-                      {loan.status === STATUS.Withdrawn && <button onClick={() => { setSelectedLoan(loan); setShowRepayModal(true); setRepayAmount(loan.repayment); }} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 shadow-sm">Repay</button>}
+                      {loan.status === STATUS.Withdrawn && <button onClick={() => { setSelectedLoan(loan); setShowRepayModal(true); }} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 shadow-sm">Repay</button>}
                     </td>
                   </tr>
                 ))}
@@ -314,12 +346,8 @@ export default function BorrowerDashboard() {
                 <div className="flex justify-between mb-2"><span className="text-slate-500 text-sm">Principal Received</span><span className="font-bold text-sm">{selectedLoan.principal} ETH</span></div>
                 <div className="flex justify-between"><span className="text-slate-500 text-sm">Amount Due</span><span className="font-black text-slate-800">{selectedLoan.repayment} ETH</span></div>
               </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Confirm Repayment (ETH)</label>
-                <input type="number" step="0.0001" value={repayAmount} onChange={(e) => setRepayAmount(e.target.value)} required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
               <button type="submit" disabled={loading} className="w-full mt-2 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md disabled:opacity-50 transition-all active:scale-[0.98]">
-                {loading ? "Processing..." : "Submit Repayment"}
+                {loading ? "Processing..." : `Pay ${selectedLoan.repayment} ETH`}
               </button>
             </form>
           </div>

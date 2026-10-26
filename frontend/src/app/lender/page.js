@@ -4,15 +4,15 @@ import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
 import SharedLayout from "../../components/SharedLayout";
 import { useWallet } from "@/hooks/useWallet";
-import contractData from "@/constants/contractAddress.json";
-import MicroLoanABI from "@/constants/MicroLoanABI.json";
+import MaintenanceBanner from "@/components/MaintenanceBanner";
+import { MICROLOAN_ABI as ABI, getContractAddress, describeTxError, sameAddress } from "@/utils/web3Helpers";
 
-const CONTRACT_ADDRESS = contractData?.address || contractData;
-const ABI = MicroLoanABI.abi || MicroLoanABI;
-const STATUS = { Requested: 0, Funded: 1, Withdrawn: 2, Repaid: 3, Defaulted: 4 };
+const CONTRACT_ADDRESS = getContractAddress();
+const STATUS = { Requested: 0, Funded: 1, Withdrawn: 2, Repaid: 3, Defaulted: 4, Cancelled: 5 };
 
 export default function LenderDashboard() {
-  const { account, connectWallet, walletError, setWalletError, getProvider, switchToSepolia } = useWallet();
+  const { account, connectWallet, walletError, setWalletError, getProvider, switchToSepolia, onSepolia } = useWallet();
+  const [notice, setNotice] = useState("");
   
   const [walletBalance, setWalletBalance] = useState("0");
   const [loading, setLoading] = useState(false);
@@ -29,7 +29,10 @@ export default function LenderDashboard() {
     try {
       setLoading(true); setWalletError("");
       const provider = getProvider();
-      
+      if (!CONTRACT_ADDRESS) { setWalletError("No contract address configured."); return; }
+      const network = await provider.getNetwork();
+      if (network.chainId !== 11155111n) { setWalletError("Switch MetaMask to the Sepolia network to continue."); return; }
+
       const balance = await provider.getBalance(walletAddress);
       setWalletBalance(Number(ethers.formatEther(balance)).toFixed(4));
 
@@ -49,20 +52,20 @@ export default function LenderDashboard() {
             id: i, 
             borrower: loan.borrower, 
             principalWei: loan.principal, 
-            repaymentWei: loan.repaymentAmount,
+            repaymentWei: loan.repayment,
             principal: ethers.formatEther(loan.principal), 
-            repayment: ethers.formatEther(loan.repaymentAmount),
+            repayment: ethers.formatEther(loan.repayment),
             dueDate: new Date(Number(loan.dueDate) * 1000).toLocaleDateString(), 
             status
           };
 
           if (status === STATUS.Requested) {
             available.push(loanData);
-          } else if (loan.lender.toLowerCase() === walletAddress.toLowerCase()) {
+          } else if (sameAddress(loan.lender, walletAddress)) {
             investments.push(loanData);
             if (status === STATUS.Funded || status === STATUS.Withdrawn) {
               totalInvestedWei += loan.principal;
-              expectedEarningsWei += (loan.repaymentAmount - loan.principal);
+              expectedEarningsWei += (loan.repayment - loan.principal);
             }
           }
         } catch (e) { console.error(`Error fetching loan ${i}:`, e); }
@@ -75,33 +78,33 @@ export default function LenderDashboard() {
         activeLoans: investments.filter(l => l.status === STATUS.Funded || l.status === STATUS.Withdrawn).length, 
         expectedEarnings: ethers.formatEther(expectedEarningsWei) 
       });
-    } catch (err) { setWalletError("Failed to fetch data from contract."); } finally { setLoading(false); }
+    } catch { setWalletError("Failed to fetch data from contract."); } finally { setLoading(false); }
   }, [getProvider, setWalletError]);
 
   useEffect(() => {
-    if (account) {
+    if (account && onSepolia) {
       loadLenderData(account);
     } else {
       setAvailableRequests([]);
       setMyInvestments([]);
       setWalletBalance("0");
     }
-  }, [account, loadLenderData]);
+  }, [account, onSepolia, loadLenderData]);
 
   const handleFundLoan = async () => {
     try {
-      setLoading(true);
+      setLoading(true); setWalletError(""); setNotice("");
       const provider = getProvider(); 
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
       
-      const tx = await contract.fundLoan(selectedLoan.id, { value: selectedLoan.principalWei });
+      const tx = await contract.fund(selectedLoan.id, { value: selectedLoan.principalWei });
       await tx.wait();
       
-      alert(`Successfully funded Loan #${selectedLoan.id}!`);
+      setNotice(`Successfully funded Loan #${selectedLoan.id}!`);
       setShowFundModal(false); 
       await loadLenderData(account);
-    } catch (err) { alert(err.reason || "Funding failed."); } finally { setLoading(false); }
+    } catch (err) { setShowFundModal(false); setWalletError(describeTxError(err)); } finally { setLoading(false); }
   };
 
   const getStatusText = (status) => Object.keys(STATUS).find(key => STATUS[key] === status) || "Unknown";
@@ -124,6 +127,9 @@ export default function LenderDashboard() {
       title="Lender Dashboard" 
       subtitle="Discover and fund micro-loan investments"
     >
+      <div className="mb-6 empty:hidden"><MaintenanceBanner /></div>
+      {account && !onSepolia && <div className="mb-6 rounded-lg bg-amber-50 p-4 text-sm text-amber-800 border border-amber-200 flex items-center justify-between gap-3"><span>MetaMask is on another network.</span><button onClick={switchToSepolia} className="font-bold underline">Switch to Sepolia</button></div>}
+      {notice && <div className="mb-6 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-700 border border-emerald-200 flex justify-between"><span>{notice}</span><button onClick={() => setNotice("")} className="font-bold">Dismiss</button></div>}
       {walletError && <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700 border border-red-200">{walletError}</div>}
 
       <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
@@ -185,12 +191,16 @@ export default function LenderDashboard() {
                     <td className="px-6 py-4 font-bold text-emerald-600">{loan.repayment} ETH</td>
                     <td className="px-6 py-4 text-slate-500">{loan.dueDate}</td>
                     <td className="px-6 py-4">
-                      <button 
-                        onClick={() => { setSelectedLoan(loan); setShowFundModal(true); }} 
-                        className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white hover:bg-blue-700 shadow-sm transition-colors"
-                      >
-                        Fund Loan
-                      </button>
+                      {sameAddress(loan.borrower, account) ? (
+                        <span className="text-xs font-medium text-slate-400">Your request</span>
+                      ) : (
+                        <button 
+                          onClick={() => { setSelectedLoan(loan); setShowFundModal(true); }} 
+                          className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white hover:bg-blue-700 shadow-sm transition-colors"
+                        >
+                          Fund Loan
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -243,7 +253,7 @@ export default function LenderDashboard() {
               </div>
               <div className="flex justify-between text-sm mb-3 pb-3 border-b border-slate-200 text-slate-600">
                 <span>Expected Reward</span>
-                <span className="font-bold text-emerald-600">+{Number(selectedLoan.repayment) - Number(selectedLoan.principal)} ETH</span>
+                <span className="font-bold text-emerald-600">+{ethers.formatEther(selectedLoan.repaymentWei - selectedLoan.principalWei)} ETH</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="font-bold text-slate-900">Total Return</span>

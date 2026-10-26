@@ -1,18 +1,18 @@
 "use client";
 import AdminDashboard from "@/components/admin/AdminDashboard";
 import SharedLayout from "@/components/SharedLayout";
+import { useWallet } from "@/hooks/useWallet";
 
 export default function AdminPage() {
+  const wallet = useWallet();
   return (
-    <SharedLayout 
-      title="Admin Dashboard" 
-      subtitle="Manage protocol parameters, pause operations, and emergency controls"
+    <SharedLayout
+      account={wallet.account}
+      onConnect={wallet.connect}
+      title="Admin Dashboard"
+      subtitle="Pause the platform and set the maximum loan amount"
     >
-      {/* 
-        Note: If AdminDashboard.jsx has its own hardcoded sidebar, 
-        you will need to remove it inside that component so it doesn't double-render.
-      */}
-      <AdminDashboard />
+      <AdminDashboard wallet={wallet} />
     </SharedLayout>
   );
 }

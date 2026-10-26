@@ -5,10 +5,9 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        {/* The teammate's UI renders normally here */}
-        {children}
+                {children}
 
-        {/* Floating Developer Navigation Menu */}
+        {process.env.NODE_ENV === "development" && (
         <div 
           style={{
             position: 'fixed',
@@ -34,6 +33,7 @@ export default function RootLayout({ children }) {
             Admin
           </Link>
         </div>
+        )}
       </body>
     </html>
   );
