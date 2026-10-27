@@ -165,11 +165,11 @@ export default function BorrowerDashboard() {
   const getStatusText = (status) => Object.keys(STATUS).find(key => STATUS[key] === status) || "Unknown";
   const getStatusStyle = (status) => {
     switch (status) {
-      case STATUS.Requested: return "bg-yellow-100 text-yellow-700";
-      case STATUS.Funded: return "bg-emerald-100 text-emerald-700";
-      case STATUS.Withdrawn: return "bg-blue-100 text-blue-700";
-      case STATUS.Repaid: return "bg-slate-200 text-slate-700";
-      default: return "bg-red-100 text-red-700";
+      case STATUS.Requested: return "bg-amber-950/60 text-amber-300 border border-amber-800";
+      case STATUS.Funded: return "bg-emerald-950/60 text-emerald-300 border border-emerald-800";
+      case STATUS.Withdrawn: return "bg-violet-950/60 text-violet-300 border border-violet-800";
+      case STATUS.Repaid: return "bg-slate-800 text-slate-300 border border-slate-700";
+      default: return "bg-rose-950/60 text-rose-300 border border-rose-800";
     }
   };
 
@@ -181,30 +181,30 @@ export default function BorrowerDashboard() {
       subtitle="Manage your loan requests and active repayments"
     >
       <div className="mb-6 empty:hidden"><MaintenanceBanner /></div>
-      {account && !onSepolia && <div className="mb-6 rounded-lg bg-amber-50 p-4 text-sm text-amber-800 border border-amber-200 flex items-center justify-between gap-3"><span>MetaMask is on another network.</span><button onClick={switchToSepolia} className="font-bold underline">Switch to Sepolia</button></div>}
-      {notice && <div className="mb-6 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-700 border border-emerald-200 flex justify-between"><span>{notice}</span><button onClick={() => setNotice("")} className="font-bold">Dismiss</button></div>}
-      {walletError && <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700 border border-red-200">{walletError}</div>}
+      {account && !onSepolia && <div className="mb-6 rounded-lg bg-amber-950/50 p-4 text-sm text-amber-300 border border-amber-800 flex items-center justify-between gap-3"><span>MetaMask is on another network.</span><button onClick={switchToSepolia} className="font-bold underline">Switch to Sepolia</button></div>}
+      {notice && <div className="mb-6 rounded-lg bg-emerald-950/50 p-4 text-sm text-emerald-300 border border-emerald-800 flex justify-between"><span>{notice}</span><button onClick={() => setNotice("")} className="font-bold">Dismiss</button></div>}
+      {walletError && <div className="mb-6 rounded-lg bg-rose-950/50 p-4 text-sm text-rose-300 border border-rose-800">{walletError}</div>}
 
       <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
-          <p className="text-sm font-medium text-slate-500">Wallet Balance</p>
+        <div className="stat-card">
+          <p className="text-sm font-medium text-slate-400">Wallet Balance</p>
           <h3 className="mt-2 text-2xl font-bold">{account ? `${walletBalance} ETH` : "—"}</h3>
         </div>
-        <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
-          <p className="text-sm font-medium text-slate-500">Total Borrowed</p>
+        <div className="stat-card">
+          <p className="text-sm font-medium text-slate-400">Total Borrowed</p>
           <h3 className="mt-2 text-2xl font-bold">{account ? `${stats.totalBorrowed} ETH` : "0 ETH"}</h3>
         </div>
-        <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
-          <p className="text-sm font-medium text-slate-500">Active Loans</p>
+        <div className="stat-card">
+          <p className="text-sm font-medium text-slate-400">Active Loans</p>
           <h3 className="mt-2 text-2xl font-bold">{stats.activeCount}</h3>
         </div>
-        <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
-          <p className="text-sm font-medium text-slate-500">Total Repayment Due</p>
-          <h3 className="mt-2 text-2xl font-bold text-blue-600">{account ? `${stats.totalDue} ETH` : "0 ETH"}</h3>
+        <div className="stat-card">
+          <p className="text-sm font-medium text-slate-400">Total Repayment Due</p>
+          <h3 className="mt-2 text-2xl font-bold text-violet-300">{account ? `${stats.totalDue} ETH` : "0 ETH"}</h3>
         </div>
       </section>
 
-      <div className="flex space-x-6 border-b border-slate-200 mb-8 px-2">
+      <div className="flex space-x-6 border-b border-slate-700 mb-8 px-2">
         {[
           { id: "dashboard", label: "Overview" },
           { id: "requests", label: "My Requests" },
@@ -215,8 +215,8 @@ export default function BorrowerDashboard() {
             onClick={() => setActiveTab(tab.id)}
             className={`pb-3 font-medium text-sm border-b-2 transition-colors ${
               activeTab === tab.id
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
+                ? "border-violet-400 text-violet-300"
+                : "border-transparent text-slate-400 hover:text-slate-100"
             }`}
           >
             {tab.label}
@@ -225,30 +225,30 @@ export default function BorrowerDashboard() {
       </div>
 
       {(activeTab === "dashboard" || activeTab === "requests") && (
-        <section className="mb-8 rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-100 p-6">
+        <section className="section-card mb-8 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-slate-700/80 p-6">
             <div>
-              <h3 className="text-lg font-bold text-slate-800">My Loan Requests</h3>
-              <p className="text-sm text-slate-500 mt-1">Pending requests waiting for a lender</p>
+              <h3 className="text-lg font-bold text-slate-100">My Loan Requests</h3>
+              <p className="text-sm text-slate-400 mt-1">Pending requests waiting for a lender</p>
             </div>
-            <button onClick={() => setShowRequestModal(true)} className="rounded-xl bg-blue-50 px-5 py-2.5 text-sm font-bold text-blue-600 hover:bg-blue-100 transition-colors">
+            <button onClick={() => setShowRequestModal(true)} className="rounded-xl bg-violet-950/50 px-5 py-2.5 text-sm font-bold text-violet-300 hover:bg-violet-900/60 transition-colors">
               + New Request
             </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-slate-50/50 text-xs uppercase text-slate-500 font-semibold border-b border-slate-100">
+              <thead className="bg-slate-800/60 text-xs uppercase text-slate-400 font-semibold border-b border-slate-700/80">
                 <tr><th className="px-6 py-4">Loan ID</th><th className="px-6 py-4">Principal</th><th className="px-6 py-4">Repayment</th><th className="px-6 py-4">Due Date</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Action</th></tr>
               </thead>
               <tbody className="text-sm">
-                {pendingRequests.length === 0 ? <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">No pending requests.</td></tr> : pendingRequests.map((loan) => (
-                  <tr key={loan.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-slate-700">#{loan.id}</td>
+                {pendingRequests.length === 0 ? <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-400">No pending requests.</td></tr> : pendingRequests.map((loan) => (
+                  <tr key={loan.id} className="border-b border-slate-700/70 hover:bg-slate-800/60 transition-colors">
+                    <td className="px-6 py-4 font-bold text-slate-200">#{loan.id}</td>
                     <td className="px-6 py-4 font-medium">{loan.principal} ETH</td>
                     <td className="px-6 py-4">{loan.repayment} ETH</td>
-                    <td className="px-6 py-4 text-slate-500">{loan.dueDate}</td>
+                    <td className="px-6 py-4 text-slate-400">{loan.dueDate}</td>
                     <td className="px-6 py-4"><span className={`rounded-full px-3 py-1 text-xs font-bold ${getStatusStyle(loan.status)}`}>{getStatusText(loan.status)}</span></td>
-                    <td className="px-6 py-4"><button onClick={() => handleCancel(loan)} disabled={loading} className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-50">Cancel</button></td>
+                    <td className="px-6 py-4"><button onClick={() => handleCancel(loan)} disabled={loading} className="rounded-xl bg-slate-800 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-slate-700 disabled:opacity-50">Cancel</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -258,27 +258,27 @@ export default function BorrowerDashboard() {
       )}
 
       {(activeTab === "dashboard" || activeTab === "borrowings") && (
-        <section className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden">
-          <div className="border-b border-slate-100 p-6">
-            <h3 className="text-lg font-bold text-slate-800">My Active Loans</h3>
-            <p className="text-sm text-slate-500 mt-1">Funded loans requiring withdrawal or repayment</p>
+        <section className="section-card overflow-hidden">
+          <div className="border-b border-slate-700/80 p-6">
+            <h3 className="text-lg font-bold text-slate-100">My Active Loans</h3>
+            <p className="text-sm text-slate-400 mt-1">Funded loans requiring withdrawal or repayment</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-slate-50/50 text-xs uppercase text-slate-500 font-semibold border-b border-slate-100">
+              <thead className="bg-slate-800/60 text-xs uppercase text-slate-400 font-semibold border-b border-slate-700/80">
                 <tr><th className="px-6 py-4">Loan ID</th><th className="px-6 py-4">Principal</th><th className="px-6 py-4">Repayment</th><th className="px-6 py-4">Due Date</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Action</th></tr>
               </thead>
               <tbody className="text-sm">
-                {activeLoans.length === 0 ? <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">No active loans found.</td></tr> : activeLoans.map((loan) => (
-                  <tr key={loan.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-slate-700">#{loan.id}</td>
+                {activeLoans.length === 0 ? <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-400">No active loans found.</td></tr> : activeLoans.map((loan) => (
+                  <tr key={loan.id} className="border-b border-slate-700/70 hover:bg-slate-800/60 transition-colors">
+                    <td className="px-6 py-4 font-bold text-slate-200">#{loan.id}</td>
                     <td className="px-6 py-4 font-medium">{loan.principal} ETH</td>
                     <td className="px-6 py-4">{loan.repayment} ETH</td>
-                    <td className="px-6 py-4 text-slate-500">{loan.dueDate}</td>
+                    <td className="px-6 py-4 text-slate-400">{loan.dueDate}</td>
                     <td className="px-6 py-4"><span className={`rounded-full px-3 py-1 text-xs font-bold ${getStatusStyle(loan.status)}`}>{getStatusText(loan.status)}</span></td>
                     <td className="px-6 py-4">
-                      {loan.status === STATUS.Funded && <button onClick={() => { setSelectedLoan(loan); setShowWithdrawModal(true); }} className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-600 shadow-sm">Withdraw</button>}
-                      {loan.status === STATUS.Withdrawn && <button onClick={() => { setSelectedLoan(loan); setShowRepayModal(true); }} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 shadow-sm">Repay</button>}
+                      {loan.status === STATUS.Funded && <button onClick={() => { setSelectedLoan(loan); setShowWithdrawModal(true); }} className="rounded-xl bg-emerald-950/500 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-600 shadow-sm">Withdraw</button>}
+                      {loan.status === STATUS.Withdrawn && <button onClick={() => { setSelectedLoan(loan); setShowRepayModal(true); }} className="rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700 shadow-sm">Repay</button>}
                     </td>
                   </tr>
                 ))}
@@ -289,31 +289,31 @@ export default function BorrowerDashboard() {
       )}
 
       {showRequestModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-700 p-8 shadow-2xl">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold text-slate-800">Request a Loan</h3>
-              <button onClick={() => setShowRequestModal(false)} className="text-3xl text-slate-400 hover:text-slate-700 transition-colors">&times;</button>
+              <h3 className="text-2xl font-bold text-slate-100">Request a Loan</h3>
+              <button onClick={() => setShowRequestModal(false)} className="text-3xl text-slate-400 hover:text-slate-200 transition-colors">&times;</button>
             </div>
             <form onSubmit={handleRequestLoan} className="space-y-5">
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Principal Amount (ETH)</label>
-                <input type="number" step="0.0001" placeholder="e.g., 3.0" value={principal} onChange={(e) => setPrincipal(e.target.value)} required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <label className="block text-sm font-bold text-slate-200 mb-1.5">Principal Amount (ETH)</label>
+                <input type="number" step="0.0001" placeholder="e.g., 3.0" value={principal} onChange={(e) => setPrincipal(e.target.value)} required className="w-full px-4 py-3 bg-slate-950/70 border border-slate-700 rounded-xl focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500" />
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Lender Reward (ETH)</label>
-                <input type="number" step="0.0001" placeholder="e.g., 0.12" value={lenderReward} onChange={(e) => setLenderReward(e.target.value)} required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <label className="block text-sm font-bold text-slate-200 mb-1.5">Lender Reward (ETH)</label>
+                <input type="number" step="0.0001" placeholder="e.g., 0.12" value={lenderReward} onChange={(e) => setLenderReward(e.target.value)} required className="w-full px-4 py-3 bg-slate-950/70 border border-slate-700 rounded-xl focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500" />
               </div>
-              <div className="rounded-xl bg-blue-50/50 p-5 border border-blue-100">
-                <div className="flex justify-between text-sm mb-2 text-slate-600"><span>Principal</span><span className="font-semibold">{principal || "0.0000"} ETH</span></div>
-                <div className="flex justify-between text-sm mb-3 pb-3 border-b border-blue-200/60 text-slate-600"><span>Lender Reward</span><span className="font-bold text-emerald-600">+{lenderReward || "0.0000"} ETH</span></div>
-                <div className="flex justify-between items-center"><span className="font-bold text-slate-900">Total Repayment</span><span className="text-xl font-black text-blue-600">{calculatedRepayment} ETH</span></div>
+              <div className="rounded-xl bg-violet-950/50/50 p-5 border border-blue-100">
+                <div className="flex justify-between text-sm mb-2 text-slate-300"><span>Principal</span><span className="font-semibold">{principal || "0.0000"} ETH</span></div>
+                <div className="flex justify-between text-sm mb-3 pb-3 border-b border-blue-200/60 text-slate-300"><span>Lender Reward</span><span className="font-bold text-emerald-400">+{lenderReward || "0.0000"} ETH</span></div>
+                <div className="flex justify-between items-center"><span className="font-bold text-slate-100">Total Repayment</span><span className="text-xl font-black text-violet-300">{calculatedRepayment} ETH</span></div>
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Due Date</label>
-                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <label className="block text-sm font-bold text-slate-200 mb-1.5">Due Date</label>
+                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required className="w-full px-4 py-3 bg-slate-950/70 border border-slate-700 rounded-xl focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500" />
               </div>
-              <button type="submit" disabled={loading} className="w-full mt-2 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md disabled:opacity-50 transition-all active:scale-[0.98]">
+              <button type="submit" disabled={loading} className="w-full mt-2 py-3.5 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl shadow-md disabled:opacity-50 transition-all active:scale-[0.98]">
                 {loading ? "Processing..." : "Submit Request"}
               </button>
             </form>
@@ -322,31 +322,31 @@ export default function BorrowerDashboard() {
       )}
 
       {showWithdrawModal && selectedLoan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-2xl text-center">
-            <h3 className="text-2xl font-bold text-slate-800 mb-2">Withdraw Funds</h3>
-            <p className="text-sm text-slate-500 mb-6">Transfer <strong className="text-slate-800">{selectedLoan.principal} ETH</strong> to your wallet.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-700 p-8 shadow-2xl text-center">
+            <h3 className="text-2xl font-bold text-slate-100 mb-2">Withdraw Funds</h3>
+            <p className="text-sm text-slate-400 mb-6">Transfer <strong className="text-slate-100">{selectedLoan.principal} ETH</strong> to your wallet.</p>
             <div className="flex gap-3">
-              <button onClick={() => setShowWithdrawModal(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors">Cancel</button>
-              <button onClick={handleWithdraw} disabled={loading} className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl disabled:opacity-50 transition-colors">Confirm</button>
+              <button onClick={() => setShowWithdrawModal(false)} className="flex-1 py-3 bg-slate-800 hover:bg-slate-800 text-slate-300 border border-slate-700 font-bold rounded-xl transition-colors">Cancel</button>
+              <button onClick={handleWithdraw} disabled={loading} className="flex-1 py-3 bg-emerald-950/500 hover:bg-emerald-600 text-white font-bold rounded-xl disabled:opacity-50 transition-colors">Confirm</button>
             </div>
           </div>
         </div>
       )}
 
       {showRepayModal && selectedLoan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-700 p-8 shadow-2xl">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold text-slate-800">Repay Loan #{selectedLoan.id}</h3>
-              <button onClick={() => setShowRepayModal(false)} className="text-3xl text-slate-400 hover:text-slate-700 transition-colors">&times;</button>
+              <h3 className="text-2xl font-bold text-slate-100">Repay Loan #{selectedLoan.id}</h3>
+              <button onClick={() => setShowRepayModal(false)} className="text-3xl text-slate-400 hover:text-slate-200 transition-colors">&times;</button>
             </div>
             <form onSubmit={handleRepay} className="space-y-5">
-              <div className="rounded-xl bg-slate-50 p-5 border border-slate-200">
-                <div className="flex justify-between mb-2"><span className="text-slate-500 text-sm">Principal Received</span><span className="font-bold text-sm">{selectedLoan.principal} ETH</span></div>
-                <div className="flex justify-between"><span className="text-slate-500 text-sm">Amount Due</span><span className="font-black text-slate-800">{selectedLoan.repayment} ETH</span></div>
+              <div className="rounded-xl bg-slate-950/70 p-5 border border-slate-700">
+                <div className="flex justify-between mb-2"><span className="text-slate-400 text-sm">Principal Received</span><span className="font-bold text-sm">{selectedLoan.principal} ETH</span></div>
+                <div className="flex justify-between"><span className="text-slate-400 text-sm">Amount Due</span><span className="font-black text-slate-100">{selectedLoan.repayment} ETH</span></div>
               </div>
-              <button type="submit" disabled={loading} className="w-full mt-2 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md disabled:opacity-50 transition-all active:scale-[0.98]">
+              <button type="submit" disabled={loading} className="w-full mt-2 py-3.5 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl shadow-md disabled:opacity-50 transition-all active:scale-[0.98]">
                 {loading ? "Processing..." : `Pay ${selectedLoan.repayment} ETH`}
               </button>
             </form>

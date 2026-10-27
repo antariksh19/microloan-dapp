@@ -1,73 +1,89 @@
+
 "use client";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export default function SharedLayout({ children, account, onConnect, title, subtitle }) {
+export default function SharedLayout({
+  children,
+  account,
+  onConnect,
+  title,
+  subtitle,
+}) {
   const pathname = usePathname();
 
   const navItems = [
-    { name: "Borrower Portal", path: "/borrower", icon: "👤" },
-    { name: "Lender Portal", path: "/lender", icon: "🏦" },
-    { name: "Admin Panel", path: "/admin", icon: "⚙️" },
+    { name: "Borrower Portal", path: "/borrower", icon: "↗" },
+    { name: "Lender Portal", path: "/lender", icon: "◈" },
+    { name: "Admin Panel", path: "/admin", icon: "⚙" },
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex">
-      <aside className="fixed left-0 top-0 hidden h-screen w-64 bg-[#0f172a] text-white md:flex flex-col shadow-xl z-20">
-        <div className="border-b border-slate-800 p-6">
-          <h1 className="text-2xl font-bold tracking-wide">MicroLoan</h1>
-          <p className="mt-1 text-sm text-blue-400 font-medium">Enterprise dApp</p>
-        </div>
-        <nav className="flex-1 p-4 space-y-3 mt-4">
+    <div className="app-shell">
+      <aside className="app-sidebar">
+        <Link href="/" className="brand">
+          <span className="brand-mark">M</span>
+          <span>
+            <strong>MicroLoan</strong>
+            <small>DECENTRALIZED FINANCE</small>
+          </span>
+        </Link>
+
+        <p className="nav-label">WORKSPACE</p>
+
+        <nav className="sidebar-nav">
           {navItems.map((item) => {
-            const isActive = pathname.toLowerCase().includes(item.path.toLowerCase());
+            const active = pathname === item.path;
+
             return (
-              <Link 
-                key={item.path} 
+              <Link
+                key={item.path}
                 href={item.path}
-                className={`flex items-center gap-3 w-full rounded-xl px-4 py-3.5 text-sm font-medium transition-all ${
-                  isActive 
-                    ? "bg-blue-600 text-white shadow-md" 
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
-                }`}
+                className={`nav-link ${active ? "active" : ""}`}
               >
-                <span className="text-lg">{item.icon}</span>
-                {item.name}
+                <span className="nav-icon">{item.icon}</span>
+                <span>{item.name}</span>
+                {active && <span className="nav-indicator" />}
               </Link>
             );
           })}
         </nav>
-        <div className="p-5 border-t border-slate-800">
-          <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-3 py-2 rounded-lg justify-center">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            Sepolia Testnet
+
+        <div className="sidebar-bottom">
+          <div className="network-card">
+            <span className="status-dot" />
+            <span>
+              <strong>Sepolia Testnet</strong>
+              <small>Ethereum network</small>
+            </span>
           </div>
+          <p className="sidebar-caption">Secure lending. On-chain trust.</p>
         </div>
       </aside>
 
-      <main className="flex-1 md:ml-64 min-h-screen flex flex-col relative">
-        <header className="flex items-center justify-between border-b border-slate-200 bg-white/80 backdrop-blur-md px-8 py-5 sticky top-0 z-10">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-800">{title}</h2>
-            <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
+      <main className="app-main">
+        <header className="topbar">
+          <div className="page-heading">
+            <p className="eyebrow">MICROLOAN PROTOCOL</p>
+            <h1>{title}</h1>
+            <p>{subtitle}</p>
           </div>
-          <button
-            onClick={onConnect}
-            className="rounded-xl bg-slate-900 px-6 py-2.5 font-semibold text-white shadow-sm hover:bg-slate-800 transition-all active:scale-95 flex items-center gap-2"
-          >
-            {account ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                {`${account.slice(0, 6)}...${account.slice(-4)}`}
-              </>
-            ) : (
-              "Connect Wallet"
-            )}
+
+          <button className="wallet-button" onClick={onConnect}>
+            <span className="wallet-dot" />
+            {account
+              ? `${account.slice(0, 6)}…${account.slice(-4)}`
+              : "Connect Wallet"}
           </button>
         </header>
-        <div className="p-8 max-w-7xl mx-auto w-full">
-          {children}
-        </div>
+
+        <div className="page-content">{children}</div>
+
+        <footer className="app-footer">
+          <span>MicroLoan Protocol</span>
+          <span>Powered by Ethereum Sepolia</span>
+        </footer>
       </main>
     </div>
   );
