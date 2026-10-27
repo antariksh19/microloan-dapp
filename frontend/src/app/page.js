@@ -1,94 +1,56 @@
-"use client";
 import Link from "next/link";
-import SharedLayout from "@/components/SharedLayout";
-import MaintenanceBanner from "@/components/MaintenanceBanner";
-import LoanTrack from "@/components/ui/LoanTrack";
-import Ledger from "@/components/ui/Ledger";
-import { btn, panel } from "@/components/ui/styles";
-import { fmtEth } from "@/components/ui/format";
-import { useWallet } from "@/hooks/useWallet";
-import { useLoans } from "@/hooks/useLoans";
-import { useContractPaused } from "@/hooks/useContractPaused";
+import { ArrowRight, ShieldCheck, Zap, Globe } from "lucide-react";
 
-const STEPS = [
-  ["Borrower posts a request", "They choose the amount, the reward they'll pay, and a due date."],
-  ["A lender funds it", "The lender sends the exact amount. The contract holds it."],
-  ["Borrower withdraws", "The funds move to the borrower's wallet."],
-  ["Borrower repays", "The contract sends the amount plus reward straight to the lender."],
-];
-
-export default function HomePage() {
-  const wallet = useWallet();
-  const { loans, maxLoanWei, loaded } = useLoans(wallet.account, wallet.chainId);
-  const paused = useContractPaused();
-  const open = loans.filter((l) => l.status === 0).length;
-  const dash = (v) => (loaded ? v : "–");
-
+export default function LandingPage() {
   return (
-    <SharedLayout wallet={wallet}>
-      <MaintenanceBanner />
+    <div className="min-h-screen flex flex-col items-center justify-center text-slate-100 relative selection:bg-blue-500 selection:text-white overflow-hidden">
+      {/* Ambient Mesh Background */}
+      <div className="mesh-bg">
+        <div className="mesh-blob-1" style={{ top: '20%', left: '30%', width: '800px', height: '800px' }} />
+        <div className="mesh-blob-2" style={{ bottom: '10%', right: '20%', width: '600px', height: '600px' }} />
+      </div>
 
-      <section className="grid items-center gap-10 py-6 lg:grid-cols-[1.15fr_1fr] lg:py-10">
-        <div>
-          <h1 className="font-display text-5xl font-bold leading-[1.05] tracking-tight text-ink sm:text-6xl">
-            Small loans, straight between people.
-          </h1>
-          <p className="mt-5 max-w-lg text-lg leading-relaxed text-mute">
-            Borrow a little ETH for a few weeks, or lend some and earn the reward the borrower offers. A smart
-            contract on Sepolia holds the money and enforces the terms. Nobody in the middle.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/borrower" className={btn("primary", "lg")}>Borrow</Link>
-            <Link href="/lender" className={btn("quiet", "lg")}>Lend</Link>
-          </div>
+      <main className="z-10 flex flex-col items-center text-center max-w-4xl px-6">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md mb-8">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-xs font-medium text-slate-300">Live on Sepolia Testnet</span>
         </div>
 
-        <div className={`${panel} p-6 shadow-sm`} aria-label="Example loan">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm text-mute">Example loan</p>
-              <p className="font-display text-4xl font-semibold tabular-nums">0.5 ETH</p>
-              <p className="text-sm text-mute">Repays 0.55 ETH, 10% more</p>
-            </div>
-          </div>
-          <div className="mt-8">
-            <LoanTrack status={2} />
-          </div>
-          <p className="mt-4 text-center text-sm text-mute">Every loan moves along this rail, from request to repayment.</p>
-        </div>
-      </section>
+        <h1 className="text-6xl md:text-8xl font-black tracking-tighter mb-6 bg-gradient-to-br from-white via-slate-200 to-slate-500 bg-clip-text text-transparent">
+          Decentralized.<br/>Borderless. Secure.
+        </h1>
+        
+        <p className="text-lg md:text-xl text-slate-400 mb-10 max-w-2xl font-medium leading-relaxed">
+          AegisLend is an enterprise-grade P2P micro-lending protocol. Borrow against your reputation or earn fixed yields by funding the future of Web3.
+        </p>
 
-      <Ledger
-        items={[
-          { label: "Loans created", value: dash(loans.length.toString()), note: "On this contract" },
-          { label: "Waiting for a lender", value: dash(open.toString()), note: "Open requests" },
-          { label: "Largest loan", value: dash(maxLoanWei === null ? "–" : `${fmtEth(maxLoanWei)} ETH`), note: "Set by the admin" },
-          { label: "Platform", value: dash(paused ? "Paused" : "Running"), tone: loaded && paused ? "text-sun-ink" : undefined },
-        ]}
-      />
-
-      <section className="grid gap-8 pt-8 lg:grid-cols-[1fr_1.4fr]">
-        <div>
-          <h2 className="font-display text-3xl font-bold tracking-tight">How a loan works</h2>
-          <p className="mt-3 max-w-sm text-mute">
-            Lending to an anonymous wallet carries risk. If a borrower doesn&apos;t repay, the contract can mark the
-            loan as defaulted, but it can&apos;t get the money back.
-          </p>
+        <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+          <Link href="/borrower" className="px-8 py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-sm uppercase tracking-wider shadow-lg shadow-blue-600/30 transition-all active:scale-95 flex items-center justify-center gap-2">
+            Enter App <ArrowRight className="w-4 h-4" />
+          </Link>
+          <a href="https://sepolia.etherscan.io/" target="_blank" rel="noreferrer" className="px-8 py-4 rounded-2xl glass-card hover:bg-white/5 text-white font-bold text-sm uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2">
+            View Smart Contract
+          </a>
         </div>
-        <ol className={`${panel} divide-y divide-line`}>
-          {STEPS.map(([title, text], i) => (
-            <li key={title} className="flex gap-4 px-5 py-4">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-lagoon-wash font-display text-sm font-semibold text-lagoon-deep">
-                {i + 1}
-              </span>
-              <div>
-                <h3 className="font-semibold text-ink">{title}</h3>
-                <p className="text-sm text-mute">{text}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </section>
-    </SharedLayout>
+
+        <div className="grid sm:grid-cols-3 gap-6 mt-20 w-full">
+          <div className="glass-card p-6 rounded-3xl border border-white/10 text-left">
+            <ShieldCheck className="w-6 h-6 text-emerald-400 mb-4" />
+            <h3 className="text-white font-bold mb-2">Trustless Escrow</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">Smart contracts handle all fund custody. No intermediaries, no hidden fees.</p>
+          </div>
+          <div className="glass-card p-6 rounded-3xl border border-white/10 text-left">
+            <Zap className="w-6 h-6 text-blue-400 mb-4" />
+            <h3 className="text-white font-bold mb-2">Instant Settlement</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">Borrower withdrawals and lender repayments execute immediately on-chain.</p>
+          </div>
+          <div className="glass-card p-6 rounded-3xl border border-white/10 text-left">
+            <Globe className="w-6 h-6 text-indigo-400 mb-4" />
+            <h3 className="text-white font-bold mb-2">Global Access</h3>
+            <p className="text-xs text-slate-400 leading-relaxed">Connect your Web3 wallet and participate from anywhere in the world.</p>
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }

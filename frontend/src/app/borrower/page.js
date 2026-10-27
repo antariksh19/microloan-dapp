@@ -1,308 +1,384 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import SharedLayout from "@/components/SharedLayout";
-import MaintenanceBanner from "@/components/MaintenanceBanner";
-import LoanRow from "@/components/LoanRow";
-import Ledger from "@/components/ui/Ledger";
-import Tabs from "@/components/ui/Tabs";
-import Modal from "@/components/ui/Modal";
-import Notice from "@/components/ui/Notice";
-import EmptyState from "@/components/ui/EmptyState";
-import { btn, field, fieldLabel, panel } from "@/components/ui/styles";
-import { dueInfo, fmtEth, formatDate, parseEthInput, rewardPercent } from "@/components/ui/format";
+import { useEffect, useState, useCallback } from "react";
+import { ethers } from "ethers";
+import SharedLayout from "../../components/SharedLayout";
 import { useWallet } from "@/hooks/useWallet";
-import { useLoans } from "@/hooks/useLoans";
-import { useTxRunner } from "@/hooks/useTxRunner";
-import { sameAddress } from "@/utils/web3Helpers";
+import contractData from "@/constants/contractAddress.json";
+import MicroLoanABI from "@/constants/MicroLoanABI.json";
 
-const DURATION_CHIPS = [7, 14, 30];
+const CONTRACT_ADDRESS = contractData?.address || contractData;
+const ABI = MicroLoanABI.abi || MicroLoanABI;
+const STATUS = { Requested: 0, Funded: 1, Withdrawn: 2, Repaid: 3, Defaulted: 4 };
 
-function isoDateIn(days) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+export default function BorrowerDashboard() {
+  const { account, connectWallet, walletError, setWalletError, getProvider, switchToSepolia } = useWallet();
+  
+  const [walletBalance, setWalletBalance] = useState("0");
+  const [loading, setLoading] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [activeLoans, setActiveLoans] = useState([]);
+  const [stats, setStats] = useState({ totalBorrowed: "0", activeCount: 0, totalDue: "0" });
+  
+  const [activeTab, setActiveTab] = useState("dashboard");
 
-export default function BorrowerPage() {
-  const wallet = useWallet();
-  const { account, chainId, onSepolia } = wallet;
-  const { loans, maxLoanWei, balance, loaded, error, reload } = useLoans(account, chainId);
-  const tx = useTxRunner({ getSigner: wallet.getSigner, onSepolia, reload });
-
-  const [tab, setTab] = useState("active");
-  const [showRequest, setShowRequest] = useState(false);
-  const [confirm, setConfirm] = useState(null); // { type: "withdraw" | "repay", loan }
-
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [showRepayModal, setShowRepayModal] = useState(false);
+  const [selectedLoan, setSelectedLoan] = useState(null);
+  
   const [principal, setPrincipal] = useState("");
-  const [reward, setReward] = useState("");
+  const [lenderReward, setLenderReward] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [formError, setFormError] = useState("");
+  const [repayAmount, setRepayAmount] = useState("");
 
-  const mine = useMemo(
-    () => loans.filter((l) => sameAddress(l.borrower, account)).sort((a, b) => b.id - a.id),
-    [loans, account]
-  );
-  const requests = mine.filter((l) => l.status === 0);
-  const active = mine.filter((l) => l.status === 1 || l.status === 2);
-  const history = mine.filter((l) => l.status >= 3);
+  const calculatedRepayment = principal && lenderReward 
+    ? (Number(principal) + Number(lenderReward)).toFixed(4)
+    : "0.0000";
 
-  const borrowedWei = active.reduce((sum, l) => sum + l.principalWei, 0n);
-  const toRepayWei = active.reduce((sum, l) => sum + l.repaymentWei, 0n);
-  const nextDue = [...active].sort((a, b) => a.dueTs - b.dueTs)[0];
-  const nextDueInfo = nextDue ? dueInfo(nextDue.dueTs, nextDue.status) : null;
+  const loadLoans = useCallback(async (walletAddress) => {
+    try {
+      setLoading(true); setWalletError("");
+      const provider = getProvider();
+      const network = await provider.getNetwork();
+      if (network.chainId !== 11155111n) { await switchToSepolia(); return; }
 
-  const principalWei = parseEthInput(principal);
-  const rewardWei = parseEthInput(reward);
-  const totalWei = principalWei !== null && rewardWei !== null ? principalWei + rewardWei : null;
+      const balance = await provider.getBalance(walletAddress);
+      setWalletBalance(Number(ethers.formatEther(balance)).toFixed(4));
 
-  const openRequest = () => {
-    if (!account) return wallet.connect();
-    tx.clear();
-    setFormError("");
-    setShowRequest(true);
-  };
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, provider);
+      const totalLoans = await contract.loanCounter();
 
-  const closeRequest = () => setShowRequest(false);
+      const pending = []; const active = [];
+      let totalBorrowedWei = 0n; let totalDueWei = 0n;
 
-  const submitRequest = async (e) => {
+      for (let i = 1; i <= Number(totalLoans); i++) {
+        try {
+          const loan = await contract.loans(i);
+          
+          // Strict safety check: Skip empty addresses
+          if (!loan || loan.borrower === ethers.ZeroAddress) continue;
+          
+          if (loan.borrower.toLowerCase() === walletAddress.toLowerCase()) {
+            // Force BigInt fallback (0n) to prevent invalid BigNumberish null errors
+            const principalWei = loan.principal || 0n;
+            const repaymentWei = loan.repaymentAmount || 0n;
+            const status = Number(loan.status || 0);
+
+            const loanData = {
+              id: i, 
+              borrower: loan.borrower, 
+              principalWei, 
+              repaymentWei,
+              principal: ethers.formatEther(principalWei), 
+              repayment: ethers.formatEther(repaymentWei),
+              dueDate: new Date(Number(loan.dueDate || 0) * 1000).toLocaleDateString(), 
+              status
+            };
+
+            if (status === STATUS.Requested) pending.push(loanData);
+            else if (status === STATUS.Funded || status === STATUS.Withdrawn) {
+              active.push(loanData); 
+              totalBorrowedWei += principalWei; 
+              totalDueWei += repaymentWei;
+            }
+          }
+        } catch (e) { 
+          console.error(`Error fetching loan ${i}:`, e); 
+        }
+      }
+      setPendingRequests(pending); setActiveLoans(active);
+      setStats({ totalBorrowed: ethers.formatEther(totalBorrowedWei), activeCount: active.length, totalDue: ethers.formatEther(totalDueWei) });
+    } catch (err) { setWalletError(err.message || "Failed to fetch data."); } finally { setLoading(false); }
+  }, [getProvider, switchToSepolia, setWalletError]);
+
+  useEffect(() => {
+    if (account) {
+      loadLoans(account);
+    } else {
+      setPendingRequests([]);
+      setActiveLoans([]);
+      setWalletBalance("0");
+    }
+  }, [account, loadLoans]);
+
+  const handleRequestLoan = async (e) => {
     e.preventDefault();
-    setFormError("");
-    if (principalWei === null || principalWei <= 0n) return setFormError("Enter the amount you want to borrow, like 0.5.");
-    if (rewardWei === null) return setFormError("Enter the reward for the lender, like 0.02. Use 0 for none.");
-    if (maxLoanWei !== null && principalWei > maxLoanWei) {
-      return setFormError(`The most you can borrow per loan is ${fmtEth(maxLoanWei)} ETH.`);
-    }
-    if (!dueDate) return setFormError("Pick a due date.");
-    const end = new Date(`${dueDate}T23:59:59`);
-    const duration = Math.floor(end.getTime() / 1000) - Math.floor(Date.now() / 1000);
-    if (!(duration > 0)) return setFormError("Pick a due date that is in the future.");
+    if (!principal || !lenderReward || !dueDate) return setWalletError("Please fill out all fields.");
+    try {
+      setLoading(true); setWalletError("");
+      const provider = getProvider(); const signer = await provider.getSigner();
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+      
+      const safePrincipalStr = Number(principal).toFixed(18);
+      const safeRepaymentStr = (Number(principal) + Number(lenderReward)).toFixed(18);
+      const principalWei = ethers.parseEther(safePrincipalStr);
+      const repaymentWei = ethers.parseEther(safeRepaymentStr);
+      
+      const dateObj = new Date(dueDate);
+      dateObj.setHours(23, 59, 59, 999);
+      const dueDateTimestamp = Math.floor(dateObj.getTime() / 1000);
 
-    const ok = await tx.run("request", "Request posted. Lenders can see it now.", (c) =>
-      c.requestLoan(principalWei, principalWei + rewardWei, duration)
-    );
-    if (ok) {
-      setPrincipal("");
-      setReward("");
-      setDueDate("");
-      setShowRequest(false);
-      setTab("requests");
-    }
+      const tx = await contract.requestLoan(principalWei, repaymentWei, dueDateTimestamp);
+      await tx.wait();
+      alert("Loan request submitted successfully!");
+      setPrincipal(""); setLenderReward(""); setDueDate(""); setShowRequestModal(false);
+      await loadLoans(account);
+    } catch (err) { setWalletError(err.reason || err.message || "Transaction failed."); } finally { setLoading(false); }
   };
 
-  const doConfirm = async () => {
-    const { type, loan } = confirm;
-    const ok =
-      type === "withdraw"
-        ? await tx.run(`withdraw-${loan.id}`, `Loan #${loan.id}: ${fmtEth(loan.principalWei)} ETH is in your wallet.`, (c) =>
-            c.withdrawToBorrower(loan.id)
-          )
-        : await tx.run(`repay-${loan.id}`, `Loan #${loan.id} repaid. The lender has been paid.`, (c) =>
-            c.repay(loan.id, { value: loan.repaymentWei })
-          );
-    if (ok) setConfirm(null);
+  const handleWithdraw = async () => {
+    try {
+      setLoading(true);
+      const provider = getProvider(); const signer = await provider.getSigner();
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+      const tx = await contract.withdrawToBorrower(selectedLoan.id);
+      await tx.wait();
+      alert(`Funds for Loan #${selectedLoan.id} withdrawn successfully!`);
+      setShowWithdrawModal(false); await loadLoans(account);
+    } catch (err) { alert(err.reason || "Withdrawal failed."); } finally { setLoading(false); }
   };
 
-  const cancelRequest = (loan) =>
-    tx.run(`cancel-${loan.id}`, `Request #${loan.id} cancelled.`, (c) => c.cancelLoan(loan.id));
+  const handleRepay = async (e) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      const provider = getProvider(); const signer = await provider.getSigner();
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+      const tx = await contract.repay(selectedLoan.id, { value: ethers.parseEther(Number(repayAmount).toFixed(18)) });
+      await tx.wait();
+      alert(`Loan #${selectedLoan.id} repaid successfully!`);
+      setShowRepayModal(false); setRepayAmount(""); await loadLoans(account);
+    } catch (err) { alert(err.reason || "Repayment failed."); } finally { setLoading(false); }
+  };
 
-  const shown = tab === "active" ? active : tab === "requests" ? requests : history;
-  const emptyCopy = {
-    active: ["No active loans", "Once a lender funds one of your requests, it shows up here ready to withdraw."],
-    requests: ["No open requests", "Post a request and lenders will be able to fund it."],
-    history: ["Nothing here yet", "Repaid, defaulted and cancelled loans are kept here."],
-  }[tab];
-
-  const confirmLoan = confirm?.loan;
-  const short = confirm?.type === "repay" && balance !== null && confirmLoan && balance < confirmLoan.repaymentWei;
+  const getStatusText = (status) => Object.keys(STATUS).find(key => STATUS[key] === status) || "Unknown";
+  const getStatusStyle = (status) => {
+    switch (status) {
+      case STATUS.Requested: return "bg-amber-500/10 text-amber-400 border border-amber-500/20";
+      case STATUS.Funded: return "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+      case STATUS.Withdrawn: return "bg-blue-500/10 text-blue-400 border border-blue-500/20";
+      case STATUS.Repaid: return "bg-slate-800 text-slate-400 border border-slate-700";
+      default: return "bg-rose-500/10 text-rose-400 border border-rose-500/20";
+    }
+  };
 
   return (
-    <SharedLayout
-      wallet={wallet}
-      title="Borrow"
-      subtitle="Ask for a small loan, set the reward you'll pay, and repay by the due date."
-      actions={
-        <button type="button" onClick={openRequest} className={btn("primary", "lg")}>
-          {account ? "New request" : "Connect to borrow"}
-        </button>
-      }
+    <SharedLayout 
+      account={account} 
+      onConnect={connectWallet} 
+      title="Borrower Dashboard" 
+      subtitle="Manage your decentralized micro-loan requests and active repayments"
     >
-      <MaintenanceBanner />
-      {account && !onSepolia && (
-        <Notice tone="warning" action={{ label: "Switch to Sepolia", onClick: wallet.switchToSepolia }}>
-          MetaMask is on a different network. Switch to Sepolia to see and manage your loans.
-        </Notice>
-      )}
-      {wallet.error && <Notice tone="error">{wallet.error}</Notice>}
-      {error && <Notice tone="error" action={{ label: "Try again", onClick: reload }}>{error}</Notice>}
-      {tx.notice && !showRequest && !confirm && (
-        <Notice
-          tone={tx.notice.tone}
-          hash={tx.notice.hash}
-          busy={tx.notice.tone === "info"}
-          onDismiss={tx.busy ? undefined : tx.clear}
-        >
-          {tx.notice.text}
-        </Notice>
+      {walletError && (
+        <div className="mb-6 rounded-2xl bg-rose-500/10 p-4 text-sm text-rose-400 border border-rose-500/20 backdrop-blur-xl">
+          {walletError}
+        </div>
       )}
 
-      <Ledger
-        items={[
-          { label: "Wallet balance", value: account && balance !== null ? `${fmtEth(balance, 4)} ETH` : "–" },
-          { label: "Borrowed now", value: account ? `${fmtEth(borrowedWei)} ETH` : "–", note: `${active.length} active ${active.length === 1 ? "loan" : "loans"}` },
-          { label: "To repay", value: account ? `${fmtEth(toRepayWei)} ETH` : "–", note: "Principal plus rewards" },
-          {
-            label: "Next due",
-            value: nextDueInfo ? nextDueInfo.rel : "–",
-            note: nextDue ? `Loan #${nextDue.id}` : "Nothing due",
-            tone: nextDueInfo?.tone === "late" ? "text-coral-deep" : nextDueInfo?.tone === "soon" ? "text-sun-ink" : undefined,
-          },
-        ]}
-      />
-
-      <section className={`${panel} overflow-hidden`}>
-        <div className="px-2">
-          <Tabs
-            label="Your loans"
-            value={tab}
-            onChange={setTab}
-            tabs={[
-              { id: "active", label: "Active", count: active.length },
-              { id: "requests", label: "Requests", count: requests.length },
-              { id: "history", label: "History", count: history.length },
-            ]}
-          />
+      {/* Bento Grid Stats */}
+      <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-10">
+        <div className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-blue-500/30 transition-all">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all" />
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Wallet Balance</p>
+          <h3 className="mt-3 text-3xl font-black text-white tracking-tight">{account ? `${walletBalance} ETH` : "—"}</h3>
+          <span className="inline-block mt-2 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">Active Session</span>
         </div>
 
-        {!account ? (
-          <EmptyState title="Connect your wallet" action={{ label: "Connect wallet", onClick: wallet.connect }}>
-            Your loans are tied to your wallet address. Connect to see them.
-          </EmptyState>
-        ) : !loaded && !error ? (
-          <p className="px-6 py-14 text-center text-sm text-mute" role="status">Loading your loans…</p>
-        ) : shown.length === 0 ? (
-          <EmptyState
-            title={emptyCopy[0]}
-            action={tab === "requests" || tab === "active" ? { label: "New request", onClick: openRequest } : undefined}
-          >
-            {emptyCopy[1]}
-          </EmptyState>
-        ) : (
-          <ul className="divide-y divide-line">
-            {shown.map((loan) => {
-              const due = dueInfo(loan.dueTs, loan.status);
-              const lenderless = loan.status === 0;
-              return (
-                <LoanRow
-                  key={loan.id}
-                  loan={loan}
-                  counterparty={{ label: "Lender", address: lenderless ? null : loan.lender, empty: "Waiting for a lender" }}
-                  note={
-                    loan.status === 1
-                      ? "Funded. Withdraw it to start the clock on repayment."
-                      : loan.status === 2 && due.overdue
-                        ? "Past the due date. The contract no longer accepts repayment."
-                        : undefined
-                  }
-                >
-                  {loan.status === 0 && (
-                    <button
-                      type="button"
-                      className={btn("quiet", "sm")}
-                      disabled={tx.busy !== null}
-                      onClick={() => cancelRequest(loan)}
-                    >
-                      {tx.busy === `cancel-${loan.id}` ? "Cancelling…" : "Cancel request"}
-                    </button>
-                  )}
-                  {loan.status === 1 && (
-                    <button type="button" className={btn("primary", "sm")} disabled={tx.busy !== null} onClick={() => { tx.clear(); setConfirm({ type: "withdraw", loan }); }}>
-                      Withdraw
-                    </button>
-                  )}
-                  {loan.status === 2 && (
-                    <button
-                      type="button"
-                      className={btn("primary", "sm")}
-                      disabled={tx.busy !== null || due.overdue}
-                      onClick={() => { tx.clear(); setConfirm({ type: "repay", loan }); }}
-                    >
-                      Repay
-                    </button>
-                  )}
-                </LoanRow>
-              );
-            })}
-          </ul>
-        )}
+        <div className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-indigo-500/30 transition-all">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/20 transition-all" />
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Borrowed</p>
+          <h3 className="mt-3 text-3xl font-black text-white tracking-tight">{account ? `${stats.totalBorrowed} ETH` : "0 ETH"}</h3>
+          <span className="inline-block mt-2 text-[11px] font-medium text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/20">Escrow Principal</span>
+        </div>
+
+        <div className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-amber-500/30 transition-all">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all" />
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Loans</p>
+          <h3 className="mt-3 text-3xl font-black text-white tracking-tight">{stats.activeCount}</h3>
+          <span className="inline-block mt-2 text-[11px] font-medium text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">In Progress</span>
+        </div>
+
+        <div className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-emerald-500/30 transition-all">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all" />
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Repayment Due</p>
+          <h3 className="mt-3 text-3xl font-black text-emerald-400 tracking-tight">{account ? `${stats.totalDue} ETH` : "0 ETH"}</h3>
+          <span className="inline-block mt-2 text-[11px] font-medium text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20">Smart Escrow</span>
+        </div>
       </section>
 
-      {showRequest && (
-        <Modal title="New loan request" onClose={closeRequest}>
-          <form onSubmit={submitRequest} noValidate className="space-y-4">
-            <div>
-              <label htmlFor="principal" className={fieldLabel}>Amount to borrow (ETH)</label>
-              <input id="principal" className={field} inputMode="decimal" placeholder="0.5" value={principal} onChange={(e) => setPrincipal(e.target.value)} autoComplete="off" />
-              {maxLoanWei !== null && <p className="mt-1.5 text-xs text-mute">The most you can borrow per loan is {fmtEth(maxLoanWei)} ETH.</p>}
-            </div>
-            <div>
-              <label htmlFor="reward" className={fieldLabel}>Reward for the lender (ETH)</label>
-              <input id="reward" className={field} inputMode="decimal" placeholder="0.02" value={reward} onChange={(e) => setReward(e.target.value)} autoComplete="off" />
-            </div>
-            <div>
-              <label htmlFor="due" className={fieldLabel}>Repay by</label>
-              <input id="due" type="date" className={field} min={isoDateIn(1)} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-              <div className="mt-2 flex gap-2">
-                {DURATION_CHIPS.map((d) => (
-                  <button key={d} type="button" className={btn("quiet", "sm")} onClick={() => setDueDate(isoDateIn(d))}>
-                    {d} days
-                  </button>
-                ))}
-              </div>
-            </div>
+      {/* Navigation Tabs */}
+      <div className="flex space-x-6 border-b border-white/10 mb-8 px-2">
+        {[
+          { id: "dashboard", label: "Overview" },
+          { id: "requests", label: "My Requests" },
+          { id: "borrowings", label: "Active Loans" }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`pb-3 font-semibold text-sm border-b-2 transition-colors ${
+              activeTab === tab.id
+                ? "border-blue-500 text-blue-400"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-            <div className="rounded-xl bg-fog px-4 py-3 text-sm">
-              <div className="flex justify-between"><span className="text-mute">You receive</span><span className="font-semibold tabular-nums">{principalWei !== null ? fmtEth(principalWei) : "0"} ETH</span></div>
-              <div className="mt-1 flex justify-between">
-                <span className="text-mute">You repay{principalWei && totalWei !== null && rewardPercent(principalWei, totalWei) ? ` (${rewardPercent(principalWei, totalWei)} more)` : ""}</span>
-                <span className="font-display text-lg font-semibold tabular-nums">{totalWei !== null ? fmtEth(totalWei) : "0"} ETH</span>
-              </div>
+      {/* Requests Table Section */}
+      {(activeTab === "dashboard" || activeTab === "requests") && (
+        <section className="mb-10 glass-card rounded-3xl overflow-hidden border border-white/10">
+          <div className="flex items-center justify-between border-b border-white/10 p-6">
+            <div>
+              <h3 className="text-lg font-bold text-white">My Loan Requests</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Pending requests awaiting lender funding</p>
             </div>
-            <p className="text-xs text-mute">If you don&apos;t repay by the end of the due date, the lender can mark the loan as defaulted.</p>
-
-            {formError && <Notice tone="error">{formError}</Notice>}
-            {tx.notice && tx.notice.tone !== "success" && (
-              <Notice tone={tx.notice.tone} hash={tx.notice.hash} busy={tx.notice.tone === "info"}>{tx.notice.text}</Notice>
-            )}
-
-            <button type="submit" disabled={tx.busy !== null} className={`${btn("primary", "lg")} w-full`}>
-              {tx.busy === "request" ? "Posting request…" : "Post request"}
+            <button 
+              onClick={() => setShowRequestModal(true)} 
+              className="rounded-2xl bg-blue-600/20 border border-blue-500/30 px-5 py-2.5 text-xs font-bold text-blue-400 hover:bg-blue-600/30 transition-all"
+            >
+              + New Request
             </button>
-          </form>
-        </Modal>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-slate-900/40 text-[11px] uppercase text-slate-400 font-semibold border-b border-white/5">
+                <tr><th className="px-6 py-4">Loan ID</th><th className="px-6 py-4">Principal</th><th className="px-6 py-4">Repayment</th><th className="px-6 py-4">Due Date</th><th className="px-6 py-4">Status</th></tr>
+              </thead>
+              <tbody className="text-sm divide-y divide-white/5">
+                {pendingRequests.length === 0 ? (
+                  <tr><td colSpan="5" className="px-6 py-10 text-center text-slate-500">No pending requests found.</td></tr>
+                ) : (
+                  pendingRequests.map((loan) => (
+                    <tr key={loan.id} className="hover:bg-white/[0.02] transition-colors">
+                      <td className="px-6 py-4 font-mono font-bold text-slate-300">#{loan.id}</td>
+                      <td className="px-6 py-4 font-medium text-white">{loan.principal} ETH</td>
+                      <td className="px-6 py-4 text-emerald-400 font-medium">{loan.repayment} ETH</td>
+                      <td className="px-6 py-4 text-slate-400 text-xs">{loan.dueDate}</td>
+                      <td className="px-6 py-4"><span className={`rounded-full px-3 py-1 text-[11px] font-bold ${getStatusStyle(loan.status)}`}>{getStatusText(loan.status)}</span></td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
-      {confirm && confirmLoan && (
-        <Modal title={confirm.type === "withdraw" ? "Withdraw funds" : "Repay loan"} size="sm" onClose={() => !tx.busy && setConfirm(null)}>
-          <div className="space-y-4">
-            <p className="text-sm text-mute">
-              {confirm.type === "withdraw"
-                ? <>Move <strong className="text-ink">{fmtEth(confirmLoan.principalWei)} ETH</strong> from the contract to your wallet. You&apos;ll then owe <strong className="text-ink">{fmtEth(confirmLoan.repaymentWei)} ETH</strong> by {formatDate(confirmLoan.dueTs)}.</>
-                : <>Send <strong className="text-ink">{fmtEth(confirmLoan.repaymentWei)} ETH</strong> to the lender. This is the exact amount the contract needs, and it closes loan #{confirmLoan.id}.</>}
-            </p>
-            {short && <Notice tone="warning">Your wallet has {fmtEth(balance, 4)} ETH, which is less than the repayment plus gas.</Notice>}
-            {tx.notice && tx.notice.tone !== "success" && (
-              <Notice tone={tx.notice.tone} hash={tx.notice.hash} busy={tx.notice.tone === "info"}>{tx.notice.text}</Notice>
-            )}
-            <div className="flex gap-3">
-              <button type="button" className={`${btn("quiet")} flex-1`} disabled={tx.busy !== null} onClick={() => setConfirm(null)}>Not now</button>
-              <button type="button" className={`${btn("primary")} flex-1`} disabled={tx.busy !== null || short} onClick={doConfirm}>
-                {tx.busy ? "Working…" : confirm.type === "withdraw" ? "Withdraw" : `Repay ${fmtEth(confirmLoan.repaymentWei)} ETH`}
+      {/* Active Loans Table Section */}
+      {(activeTab === "dashboard" || activeTab === "borrowings") && (
+        <section className="glass-card rounded-3xl overflow-hidden border border-white/10">
+          <div className="border-b border-white/10 p-6">
+            <h3 className="text-lg font-bold text-white">My Active Loans</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Funded loans requiring withdrawal or repayment</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-slate-900/40 text-[11px] uppercase text-slate-400 font-semibold border-b border-white/5">
+                <tr><th className="px-6 py-4">Loan ID</th><th className="px-6 py-4">Principal</th><th className="px-6 py-4">Repayment</th><th className="px-6 py-4">Due Date</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Action</th></tr>
+              </thead>
+              <tbody className="text-sm divide-y divide-white/5">
+                {activeLoans.length === 0 ? (
+                  <tr><td colSpan="6" className="px-6 py-10 text-center text-slate-500">No active loans found.</td></tr>
+                ) : (
+                  activeLoans.map((loan) => (
+                    <tr key={loan.id} className="hover:bg-white/[0.02] transition-colors">
+                      <td className="px-6 py-4 font-mono font-bold text-slate-300">#{loan.id}</td>
+                      <td className="px-6 py-4 font-medium text-white">{loan.principal} ETH</td>
+                      <td className="px-6 py-4 text-emerald-400 font-medium">{loan.repayment} ETH</td>
+                      <td className="px-6 py-4 text-slate-400 text-xs">{loan.dueDate}</td>
+                      <td className="px-6 py-4"><span className={`rounded-full px-3 py-1 text-[11px] font-bold ${getStatusStyle(loan.status)}`}>{getStatusText(loan.status)}</span></td>
+                      <td className="px-6 py-4">
+                        {loan.status === STATUS.Funded && (
+                          <button onClick={() => { setSelectedLoan(loan); setShowWithdrawModal(true); }} className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-emerald-400 shadow-lg shadow-emerald-500/20 transition-all">Withdraw</button>
+                        )}
+                        {loan.status === STATUS.Withdrawn && (
+                          <button onClick={() => { setSelectedLoan(loan); setShowRepayModal(true); setRepayAmount(loan.repayment); }} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-500 shadow-lg shadow-blue-600/30 transition-all">Repay</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* Request Modal */}
+      {showRequestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xl p-4">
+          <div className="w-full max-w-md glass-card p-8 rounded-3xl border border-white/10 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-white">Request a Loan</h3>
+              <button onClick={() => setShowRequestModal(false)} className="text-2xl text-slate-400 hover:text-white transition-colors">&times;</button>
+            </div>
+            <form onSubmit={handleRequestLoan} className="space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Principal Amount (ETH)</label>
+                <input type="number" step="0.0001" placeholder="e.g., 2.5" value={principal} onChange={(e) => setPrincipal(e.target.value)} required className="w-full px-4 py-3 glass-input rounded-2xl text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Lender Reward (ETH)</label>
+                <input type="number" step="0.0001" placeholder="e.g., 0.15" value={lenderReward} onChange={(e) => setLenderReward(e.target.value)} required className="w-full px-4 py-3 glass-input rounded-2xl text-sm" />
+              </div>
+              <div className="rounded-2xl bg-slate-900/60 p-5 border border-white/5 space-y-2">
+                <div className="flex justify-between text-xs text-slate-400"><span>Principal</span><span className="font-semibold text-white">{principal || "0.0000"} ETH</span></div>
+                <div className="flex justify-between text-xs text-slate-400 pb-2 border-b border-white/5"><span>Lender Reward</span><span className="font-bold text-emerald-400">+{lenderReward || "0.0000"} ETH</span></div>
+                <div className="flex justify-between items-center pt-1"><span className="font-bold text-slate-200 text-xs uppercase">Total Repayment</span><span className="text-lg font-black text-blue-400">{calculatedRepayment} ETH</span></div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Due Date</label>
+                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required className="w-full px-4 py-3 glass-input rounded-2xl text-sm" />
+              </div>
+              <button type="submit" disabled={loading} className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-blue-600/30 disabled:opacity-50 transition-all">
+                {loading ? "Processing..." : "Submit Loan Request"}
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Withdraw Modal */}
+      {showWithdrawModal && selectedLoan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xl p-4">
+          <div className="w-full max-w-sm glass-card p-8 rounded-3xl border border-white/10 shadow-2xl text-center">
+            <h3 className="text-xl font-bold text-white mb-2">Withdraw Funds</h3>
+            <p className="text-xs text-slate-400 mb-6">Transfer <strong className="text-white font-bold">{selectedLoan.principal} ETH</strong> to your wallet from escrow.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowWithdrawModal(false)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs uppercase tracking-wider rounded-2xl transition-colors">Cancel</button>
+              <button onClick={handleWithdraw} disabled={loading} className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-colors">Confirm</button>
             </div>
           </div>
-        </Modal>
+        </div>
+      )}
+
+      {/* Repay Modal */}
+      {showRepayModal && selectedLoan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xl p-4">
+          <div className="w-full max-w-md glass-card p-8 rounded-3xl border border-white/10 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-white">Repay Loan #{selectedLoan.id}</h3>
+              <button onClick={() => setShowRepayModal(false)} className="text-2xl text-slate-400 hover:text-white transition-colors">&times;</button>
+            </div>
+            <form onSubmit={handleRepay} className="space-y-5">
+              <div className="rounded-2xl bg-slate-900/60 p-5 border border-white/5 space-y-2">
+                <div className="flex justify-between text-xs text-slate-400"><span>Principal Received</span><span className="font-semibold text-white">{selectedLoan.principal} ETH</span></div>
+                <div className="flex justify-between text-xs text-slate-400"><span>Amount Due</span><span className="font-black text-emerald-400">{selectedLoan.repayment} ETH</span></div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Confirm Repayment (ETH)</label>
+                <input type="number" step="0.0001" value={repayAmount} onChange={(e) => setRepayAmount(e.target.value)} required className="w-full px-4 py-3 glass-input rounded-2xl text-sm" />
+              </div>
+              <button type="submit" disabled={loading} className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-blue-600/30 disabled:opacity-50 transition-all">
+                {loading ? "Processing..." : "Submit Repayment"}
+              </button>
+            </form>
+          </div>
+        </div>
       )}
     </SharedLayout>
   );
