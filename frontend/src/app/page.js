@@ -1,129 +1,94 @@
-
+"use client";
 import Link from "next/link";
+import SharedLayout from "@/components/SharedLayout";
+import MaintenanceBanner from "@/components/MaintenanceBanner";
+import LoanTrack from "@/components/ui/LoanTrack";
+import Ledger from "@/components/ui/Ledger";
+import { btn, panel } from "@/components/ui/styles";
+import { fmtEth } from "@/components/ui/format";
+import { useWallet } from "@/hooks/useWallet";
+import { useLoans } from "@/hooks/useLoans";
+import { useContractPaused } from "@/hooks/useContractPaused";
 
-const features = [
-  {
-    number: "01",
-    title: "Borrow with clarity",
-    description:
-      "Create a loan request, review repayment terms, and track your loan activity on-chain.",
-  },
-  {
-    number: "02",
-    title: "Lend with purpose",
-    description:
-      "Explore open requests, choose a loan to fund, and monitor your lending activity.",
-  },
-  {
-    number: "03",
-    title: "Transparent by design",
-    description:
-      "Wallet-based access and blockchain transactions keep the lending process verifiable.",
-  },
+const STEPS = [
+  ["Borrower posts a request", "They choose the amount, the reward they'll pay, and a due date."],
+  ["A lender funds it", "The lender sends the exact amount. The contract holds it."],
+  ["Borrower withdraws", "The funds move to the borrower's wallet."],
+  ["Borrower repays", "The contract sends the amount plus reward straight to the lender."],
 ];
 
 export default function HomePage() {
+  const wallet = useWallet();
+  const { loans, maxLoanWei, loaded } = useLoans(wallet.account, wallet.chainId);
+  const paused = useContractPaused();
+  const open = loans.filter((l) => l.status === 0).length;
+  const dash = (v) => (loaded ? v : "–");
+
   return (
-    <main className="landing-page">
-      <nav className="landing-nav">
-        <Link href="/" className="brand landing-brand">
-          <span className="brand-mark">M</span>
-          <strong>MicroLoan</strong>
-        </Link>
-        <span className="landing-network">
-          <span className="status-dot" />
-          Built on Ethereum Sepolia
-        </span>
-      </nav>
+    <SharedLayout wallet={wallet}>
+      <MaintenanceBanner />
 
-      <section className="hero">
-        <div className="hero-copy">
-          <div className="hero-badge">
-            <span className="status-dot" />
-            DECENTRALIZED PEER-TO-PEER LENDING
-          </div>
-
-          <h1>
-            Finance that moves
-            <span className="hero-gradient"> with trust.</span>
+      <section className="grid items-center gap-10 py-6 lg:grid-cols-[1.15fr_1fr] lg:py-10">
+        <div>
+          <h1 className="font-display text-5xl font-bold leading-[1.05] tracking-tight text-ink sm:text-6xl">
+            Small loans, straight between people.
           </h1>
-
-          <p className="hero-description">
-            A simpler way to connect borrowers and lenders. Create requests,
-            fund loans, and manage repayments through smart contracts.
+          <p className="mt-5 max-w-lg text-lg leading-relaxed text-mute">
+            Borrow a little ETH for a few weeks, or lend some and earn the reward the borrower offers. A smart
+            contract on Sepolia holds the money and enforces the terms. Nobody in the middle.
           </p>
-
-          <div className="hero-actions">
-            <Link href="/borrower" className="primary-cta">
-              Borrow funds <span>↗</span>
-            </Link>
-            <Link href="/lender" className="secondary-cta">
-              Explore lending
-            </Link>
-          </div>
-
-          <div className="hero-note">
-            <span className="status-dot" />
-            Testnet experience · MetaMask required
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link href="/borrower" className={btn("primary", "lg")}>Borrow</Link>
+            <Link href="/lender" className={btn("quiet", "lg")}>Lend</Link>
           </div>
         </div>
 
-        <div className="hero-visual">
-          <div className="glow-orb" />
-          <div className="preview-card">
-            <div className="preview-top">
-              <span>PROTOCOL OVERVIEW</span>
-              <span className="preview-live">
-                <span className="status-dot" /> LIVE UI
+        <div className={`${panel} p-6 shadow-sm`} aria-label="Example loan">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm text-mute">Example loan</p>
+              <p className="font-display text-4xl font-semibold tabular-nums">0.5 ETH</p>
+              <p className="text-sm text-mute">Repays 0.55 ETH, 10% more</p>
+            </div>
+          </div>
+          <div className="mt-8">
+            <LoanTrack status={2} />
+          </div>
+          <p className="mt-4 text-center text-sm text-mute">Every loan moves along this rail, from request to repayment.</p>
+        </div>
+      </section>
+
+      <Ledger
+        items={[
+          { label: "Loans created", value: dash(loans.length.toString()), note: "On this contract" },
+          { label: "Waiting for a lender", value: dash(open.toString()), note: "Open requests" },
+          { label: "Largest loan", value: dash(maxLoanWei === null ? "–" : `${fmtEth(maxLoanWei)} ETH`), note: "Set by the admin" },
+          { label: "Platform", value: dash(paused ? "Paused" : "Running"), tone: loaded && paused ? "text-sun-ink" : undefined },
+        ]}
+      />
+
+      <section className="grid gap-8 pt-8 lg:grid-cols-[1fr_1.4fr]">
+        <div>
+          <h2 className="font-display text-3xl font-bold tracking-tight">How a loan works</h2>
+          <p className="mt-3 max-w-sm text-mute">
+            Lending to an anonymous wallet carries risk. If a borrower doesn&apos;t repay, the contract can mark the
+            loan as defaulted, but it can&apos;t get the money back.
+          </p>
+        </div>
+        <ol className={`${panel} divide-y divide-line`}>
+          {STEPS.map(([title, text], i) => (
+            <li key={title} className="flex gap-4 px-5 py-4">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-lagoon-wash font-display text-sm font-semibold text-lagoon-deep">
+                {i + 1}
               </span>
-            </div>
-
-            <div className="preview-icon">↗</div>
-            <p className="preview-label">Peer-to-peer lending</p>
-            <h2>Built around transparency.</h2>
-            <p className="preview-description">
-              Borrower requests, lender funding, and repayments managed through
-              smart-contract transactions.
-            </p>
-
-            <div className="preview-divider" />
-            <div className="preview-bottom">
               <div>
-                <span>NETWORK</span>
-                <strong>Sepolia</strong>
+                <h3 className="font-semibold text-ink">{title}</h3>
+                <p className="text-sm text-mute">{text}</p>
               </div>
-              <div>
-                <span>ACCESS</span>
-                <strong>Wallet-based</strong>
-              </div>
-            </div>
-          </div>
-          <div className="floating-tag">On-chain transactions ◈</div>
-        </div>
-      </section>
-
-      <section className="features-section">
-        <div className="section-heading">
-          <p className="eyebrow">THE PLATFORM</p>
-          <h2>One protocol. Two sides. Clear terms.</h2>
-          <p>Tools for both sides of the lending experience.</p>
-        </div>
-
-        <div className="feature-grid">
-          {features.map((feature) => (
-            <article className="feature-card" key={feature.number}>
-              <span className="feature-number">{feature.number}</span>
-              <h3>{feature.title}</h3>
-              <p>{feature.description}</p>
-            </article>
+            </li>
           ))}
-        </div>
+        </ol>
       </section>
-
-      <footer className="landing-footer">
-        <span>MicroLoan Protocol</span>
-        <span>Experimental dApp · Sepolia Testnet</span>
-      </footer>
-    </main>
+    </SharedLayout>
   );
 }

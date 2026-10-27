@@ -21,10 +21,10 @@ export default function TxNotice({ pending, lastTx, onDismiss }) {
   if (pending) {
     const w = WORDS[pending.action];
     return (
-      <div className={`${box} border-blue-200 bg-blue-50 text-blue-700`} role="status">
+      <div className={`${box} border-tide/25 bg-tide-wash text-tide`} role="status">
         <span className="flex items-center gap-3">
           <span
-            className="inline-block h-4 w-4 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin motion-reduce:animate-none"
+            className="inline-block h-4 w-4 rounded-full border-2 border-tide/25 border-t-tide animate-spin motion-reduce:animate-none"
             aria-hidden="true"
           />
           {pending.stage === "wallet"
@@ -42,7 +42,7 @@ export default function TxNotice({ pending, lastTx, onDismiss }) {
 
   return (
     <div
-      className={`${box} ${ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}
+      className={`${box} ${ok ? "border-lagoon/30 bg-lagoon-wash text-lagoon-deep" : "border-coral/30 bg-coral-wash text-coral-deep"}`}
       role={ok ? "status" : "alert"}
     >
       <span>{ok ? w.done : `Couldn't ${w.verb}. ${lastTx.message}`}</span>

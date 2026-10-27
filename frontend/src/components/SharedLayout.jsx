@@ -1,90 +1,90 @@
-
 "use client";
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import WalletButton from "@/components/ui/WalletButton";
+import { addressUrl, getContractAddress, shortAddress } from "@/utils/web3Helpers";
 
-export default function SharedLayout({
-  children,
-  account,
-  onConnect,
-  title,
-  subtitle,
-}) {
+const NAV = [
+  { name: "Borrow", href: "/borrower" },
+  { name: "Lend", href: "/lender" },
+  { name: "Admin", href: "/admin" },
+];
+
+function Mark() {
+  // A loan going out and coming back: one ring closing on another.
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+      <circle cx="12" cy="14" r="9" stroke="#0b5d57" strokeWidth="3" />
+      <circle cx="18" cy="14" r="9" stroke="#10202b" strokeWidth="3" />
+    </svg>
+  );
+}
+
+export default function SharedLayout({ wallet, title, subtitle, actions, children }) {
   const pathname = usePathname();
-
-  const navItems = [
-    { name: "Borrower Portal", path: "/borrower", icon: "↗" },
-    { name: "Lender Portal", path: "/lender", icon: "◈" },
-    { name: "Admin Panel", path: "/admin", icon: "⚙" },
-  ];
+  const contract = getContractAddress();
 
   return (
-    <div className="app-shell">
-      <aside className="app-sidebar">
-        <Link href="/" className="brand">
-          <span className="brand-mark">M</span>
-          <span>
-            <strong>MicroLoan</strong>
-            <small>DECENTRALIZED FINANCE</small>
-          </span>
-        </Link>
+    <div className="flex min-h-screen flex-col">
+      <header className="border-b border-line bg-paper">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-3 px-4 py-3 sm:px-6">
+          <Link href="/" className="flex items-center gap-2.5 font-display text-xl font-bold tracking-tight text-ink">
+            <Mark />
+            MicroLoan
+          </Link>
 
-        <p className="nav-label">WORKSPACE</p>
+          <nav aria-label="Main" className="order-3 flex w-full gap-1 sm:order-none sm:w-auto">
+            {NAV.map((item) => {
+              const active = pathname?.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors ${
+                    active ? "bg-ink text-white" : "text-mute hover:bg-fog hover:text-ink"
+                  }`}
+                >
+                  {item.name}
+                </Link>
+              );
+            })}
+          </nav>
 
-        <nav className="sidebar-nav">
-          {navItems.map((item) => {
-            const active = pathname === item.path;
-
-            return (
-              <Link
-                key={item.path}
-                href={item.path}
-                className={`nav-link ${active ? "active" : ""}`}
-              >
-                <span className="nav-icon">{item.icon}</span>
-                <span>{item.name}</span>
-                {active && <span className="nav-indicator" />}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="sidebar-bottom">
-          <div className="network-card">
-            <span className="status-dot" />
-            <span>
-              <strong>Sepolia Testnet</strong>
-              <small>Ethereum network</small>
-            </span>
+          <div className="ml-auto">
+            <WalletButton wallet={wallet} />
           </div>
-          <p className="sidebar-caption">Secure lending. On-chain trust.</p>
         </div>
-      </aside>
+      </header>
 
-      <main className="app-main">
-        <header className="topbar">
-          <div className="page-heading">
-            <p className="eyebrow">MICROLOAN PROTOCOL</p>
-            <h1>{title}</h1>
-            <p>{subtitle}</p>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+        {(title || actions) && (
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1 className="font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">{title}</h1>
+              {subtitle && <p className="mt-1.5 max-w-xl text-mute">{subtitle}</p>}
+            </div>
+            {actions}
           </div>
-
-          <button className="wallet-button" onClick={onConnect}>
-            <span className="wallet-dot" />
-            {account
-              ? `${account.slice(0, 6)}…${account.slice(-4)}`
-              : "Connect Wallet"}
-          </button>
-        </header>
-
-        <div className="page-content">{children}</div>
-
-        <footer className="app-footer">
-          <span>MicroLoan Protocol</span>
-          <span>Powered by Ethereum Sepolia</span>
-        </footer>
+        )}
+        <div className="space-y-5">{children}</div>
       </main>
+
+      <footer className="border-t border-line bg-paper">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-sm text-mute sm:px-6">
+          <span>This runs on the Sepolia test network. The ETH has no real value.</span>
+          {contract && (
+            <a
+              href={addressUrl(contract)}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono underline underline-offset-2 hover:text-ink"
+            >
+              Contract {shortAddress(contract)}
+            </a>
+          )}
+        </div>
+      </footer>
     </div>
   );
 }

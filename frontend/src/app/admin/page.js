@@ -7,10 +7,9 @@ export default function AdminPage() {
   const wallet = useWallet();
   return (
     <SharedLayout
-      account={wallet.account}
-      onConnect={wallet.connect}
-      title="Admin Dashboard"
-      subtitle="Pause the platform and set the maximum loan amount"
+      wallet={wallet}
+      title="Admin"
+      subtitle="Pause the platform in an emergency and set the largest loan a borrower can request."
     >
       <AdminDashboard wallet={wallet} />
     </SharedLayout>
