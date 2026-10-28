@@ -1,9 +1,14 @@
 "use client";
 
+import LoanProgressBar from "@/components/ui/LoanProgressBar";
+import CountUp from "react-countup";
 import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 import SharedLayout from "../../components/SharedLayout";
+import EmptyState from "@/components/ui/EmptyState";
+import { SkeletonTable } from "@/components/ui/Skeletons";
 import { useWallet } from "@/hooks/useWallet";
 import contractData from "@/constants/contractAddress.json";
 import MicroLoanABI from "@/constants/MicroLoanABI.json";
@@ -16,7 +21,7 @@ export default function LenderDashboard() {
   const { account, connectWallet, walletError, setWalletError, getProvider, switchToSepolia } = useWallet();
   
   const [walletBalance, setWalletBalance] = useState("0");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   const [availableRequests, setAvailableRequests] = useState([]);
   const [myInvestments, setMyInvestments] = useState([]);
@@ -99,6 +104,7 @@ export default function LenderDashboard() {
       setAvailableRequests([]);
       setMyInvestments([]);
       setWalletBalance("0");
+      setLoading(false);
     }
   }, [account, loadLenderData]);
 
@@ -136,6 +142,24 @@ export default function LenderDashboard() {
 
   const shortenAddress = (address) => address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
 
+  // Framer Motion variants
+  const staggerContainer = {
+    hidden: { opacity: 0 },
+    show: { opacity: 1, transition: { staggerChildren: 0.1 } }
+  };
+  const cardVariant = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
+  };
+  const modalBackdrop = {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1 }
+  };
+  const modalContent = {
+    hidden: { scale: 0.95, opacity: 0, y: 20 },
+    visible: { scale: 1, opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 30 } }
+  };
+
   return (
     <SharedLayout 
       account={account} 
@@ -150,35 +174,58 @@ export default function LenderDashboard() {
       )}
 
       {/* Bento Grid Stats */}
-      <section className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-10">
-        <div className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-blue-500/30 transition-all">
+      <motion.section 
+        variants={staggerContainer} 
+        initial="hidden" 
+        animate="show" 
+        className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-10"
+      >
+        <motion.div variants={cardVariant} className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-blue-500/30 transition-all">
           <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all" />
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Wallet Balance</p>
-          <h3 className="mt-3 text-3xl font-black text-white tracking-tight">{account ? `${walletBalance} ETH` : "—"}</h3>
+          <div className="mt-3 flex items-baseline gap-1">
+            <h3 className="text-3xl font-black text-white font-mono tracking-tight">
+              <CountUp end={Number(walletBalance)} decimals={4} duration={2} separator="," />
+            </h3>
+            <span className="text-sm font-bold text-slate-500">ETH</span>
+          </div>
           <span className="inline-block mt-2 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">Active Session</span>
-        </div>
+        </motion.div>
 
-        <div className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-indigo-500/30 transition-all">
+        <motion.div variants={cardVariant} className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-indigo-500/30 transition-all">
           <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl group-hover:bg-indigo-500/20 transition-all" />
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Invested</p>
-          <h3 className="mt-3 text-3xl font-black text-white tracking-tight">{account ? `${stats.totalInvested} ETH` : "0 ETH"}</h3>
+          <div className="mt-3 flex items-baseline gap-1">
+            <h3 className="text-3xl font-black text-white font-mono tracking-tight">
+              <CountUp end={Number(stats.totalInvested)} decimals={4} duration={2} separator="," />
+            </h3>
+            <span className="text-sm font-bold text-slate-500">ETH</span>
+          </div>
           <span className="inline-block mt-2 text-[11px] font-medium text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/20">Active Capital</span>
-        </div>
+        </motion.div>
 
-        <div className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-amber-500/30 transition-all">
+        <motion.div variants={cardVariant} className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-amber-500/30 transition-all">
           <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all" />
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Active Loans</p>
-          <h3 className="mt-3 text-3xl font-black text-white tracking-tight">{stats.activeLoans}</h3>
+          <h3 className="mt-3 text-3xl font-black text-white font-mono tracking-tight">
+            <CountUp end={stats.activeLoans} duration={1.5} />
+          </h3>
           <span className="inline-block mt-2 text-[11px] font-medium text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">Performing</span>
-        </div>
+        </motion.div>
 
-        <div className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-emerald-500/30 transition-all">
+        <motion.div variants={cardVariant} className="glass-card p-6 rounded-3xl relative overflow-hidden group hover:border-emerald-500/30 transition-all">
           <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all" />
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Expected Earnings</p>
-          <h3 className="mt-3 text-3xl font-black text-emerald-400 tracking-tight">{account ? `+${stats.expectedEarnings} ETH` : "0 ETH"}</h3>
+          <div className="mt-3 flex items-baseline gap-1">
+            <span className="text-3xl font-black text-emerald-400 font-mono tracking-tight">+</span>
+            <h3 className="text-3xl font-black text-emerald-400 font-mono tracking-tight">
+              <CountUp end={Number(stats.expectedEarnings)} decimals={4} duration={2.5} separator="," />
+            </h3>
+            <span className="text-sm font-bold text-slate-500">ETH</span>
+          </div>
           <span className="inline-block mt-2 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">Yield Return</span>
-        </div>
-      </section>
+        </motion.div>
+      </motion.section>
 
       {/* Navigation Tabs */}
       <div className="flex space-x-6 border-b border-white/10 mb-8 px-2">
@@ -201,116 +248,134 @@ export default function LenderDashboard() {
         ))}
       </div>
 
-      {/* Available Requests Table */}
+      {/* Available Requests Section */}
       {(activeTab === "dashboard" || activeTab === "available") && (
-        <section className="mb-10 glass-card rounded-3xl overflow-hidden border border-white/10">
+        <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-10 glass-card rounded-3xl overflow-hidden border border-white/10">
           <div className="border-b border-white/10 p-6">
             <h3 className="text-lg font-bold text-white">Available Loan Requests</h3>
             <p className="text-xs text-slate-400 mt-0.5">Review borrower requests and fund them to earn fixed rewards</p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-slate-900/40 text-[11px] uppercase text-slate-400 font-semibold border-b border-white/5">
-                <tr><th className="px-6 py-4">Loan ID</th><th className="px-6 py-4">Borrower</th><th className="px-6 py-4">Principal</th><th className="px-6 py-4">Total Return</th><th className="px-6 py-4">Due Date</th><th className="px-6 py-4">Action</th></tr>
-              </thead>
-              <tbody className="text-sm divide-y divide-white/5">
-                {availableRequests.length === 0 ? (
-                  <tr><td colSpan="6" className="px-6 py-10 text-center text-slate-500">No available loan requests at the moment.</td></tr>
-                ) : (
-                  availableRequests.map((loan) => (
-                    <tr key={loan.id} className="hover:bg-white/[0.02] transition-colors">
+          
+          {loading ? (
+            <SkeletonTable />
+          ) : availableRequests.length === 0 ? (
+            <EmptyState 
+              title="No Open Requests" 
+              description="There are currently no unfunded loan requests on the market. Check back later for new opportunities."
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-slate-900/40 text-[11px] uppercase text-slate-400 font-semibold border-b border-white/5">
+                  <tr><th className="px-6 py-4">Loan ID</th><th className="px-6 py-4">Borrower</th><th className="px-6 py-4">Principal</th><th className="px-6 py-4">Total Return</th><th className="px-6 py-4">Due Date</th><th className="px-6 py-4">Action</th></tr>
+                </thead>
+                <tbody className="text-sm divide-y divide-white/5">
+                  {availableRequests.map((loan) => (
+                    <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }} key={loan.id} className="hover:bg-white/[0.02] transition-colors">
                       <td className="px-6 py-4 font-mono font-bold text-slate-300">#{loan.id}</td>
                       <td className="px-6 py-4 font-mono text-xs text-slate-400">{shortenAddress(loan.borrower)}</td>
-                      <td className="px-6 py-4 font-medium text-white">{loan.principal} ETH</td>
-                      <td className="px-6 py-4 font-bold text-emerald-400">{loan.repayment} ETH</td>
-                      <td className="px-6 py-4 text-slate-400 text-xs">{loan.dueDate}</td>
+                      <td className="px-6 py-4 font-medium text-white font-mono">{loan.principal} ETH</td>
+                      <td className="px-6 py-4 font-bold text-emerald-400 font-mono">{loan.repayment} ETH</td>
+                      <td className="px-6 py-4">
+                        <LoanProgressBar dueDate={loan.dueDate} status={loan.status} />
+                      </td>
                       <td className="px-6 py-4">
                         <button 
                           onClick={() => { setSelectedLoan(loan); setShowFundModal(true); }} 
-                          className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white hover:bg-blue-500 shadow-lg shadow-blue-600/30 transition-all"
+                          className="rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white hover:bg-blue-500 shadow-lg shadow-blue-600/30 transition-all active:scale-95"
                         >
                           Fund Loan
                         </button>
                       </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </motion.section>
       )}
 
-      {/* Investments Table */}
+      {/* Investments Section */}
       {(activeTab === "dashboard" || activeTab === "investments") && (
-        <section className="glass-card rounded-3xl overflow-hidden border border-white/10">
+        <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card rounded-3xl overflow-hidden border border-white/10">
           <div className="border-b border-white/10 p-6">
             <h3 className="text-lg font-bold text-white">My Investments</h3>
             <p className="text-xs text-slate-400 mt-0.5">Track the live performance and status of loans you have funded</p>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-slate-900/40 text-[11px] uppercase text-slate-400 font-semibold border-b border-white/5">
-                <tr><th className="px-6 py-4">Loan ID</th><th className="px-6 py-4">Borrower</th><th className="px-6 py-4">Principal</th><th className="px-6 py-4">Expected Return</th><th className="px-6 py-4">Due Date</th><th className="px-6 py-4">Status</th></tr>
-              </thead>
-              <tbody className="text-sm divide-y divide-white/5">
-                {myInvestments.length === 0 ? (
-                  <tr><td colSpan="6" className="px-6 py-10 text-center text-slate-500">You have no active investments.</td></tr>
-                ) : (
-                  myInvestments.map((loan) => (
-                    <tr key={loan.id} className="hover:bg-white/[0.02] transition-colors">
+          
+          {loading ? (
+            <SkeletonTable />
+          ) : myInvestments.length === 0 ? (
+            <EmptyState 
+              title="No Active Investments" 
+              description="You haven't funded any loans yet. Browse available requests to start earning yield."
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-slate-900/40 text-[11px] uppercase text-slate-400 font-semibold border-b border-white/5">
+                  <tr><th className="px-6 py-4">Loan ID</th><th className="px-6 py-4">Borrower</th><th className="px-6 py-4">Principal</th><th className="px-6 py-4">Expected Return</th><th className="px-6 py-4">Due Date</th><th className="px-6 py-4">Status</th></tr>
+                </thead>
+                <tbody className="text-sm divide-y divide-white/5">
+                  {myInvestments.map((loan) => (
+                    <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }} key={loan.id} className="hover:bg-white/[0.02] transition-colors">
                       <td className="px-6 py-4 font-mono font-bold text-slate-300">#{loan.id}</td>
                       <td className="px-6 py-4 font-mono text-xs text-slate-400">{shortenAddress(loan.borrower)}</td>
-                      <td className="px-6 py-4 font-medium text-white">{loan.principal} ETH</td>
-                      <td className="px-6 py-4 font-bold text-emerald-400">{loan.repayment} ETH</td>
-                      <td className="px-6 py-4 text-slate-400 text-xs">{loan.dueDate}</td>
+                      <td className="px-6 py-4 font-medium text-white font-mono">{loan.principal} ETH</td>
+                      <td className="px-6 py-4 font-bold text-emerald-400 font-mono">{loan.repayment} ETH</td>
+                      <td className="px-6 py-4">
+                        <LoanProgressBar dueDate={loan.dueDate} status={loan.status} />
+                      </td>
                       <td className="px-6 py-4"><span className={`rounded-full px-3 py-1 text-[11px] font-bold ${getStatusStyle(loan.status)}`}>{getStatusText(loan.status)}</span></td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </motion.section>
       )}
 
-      {/* Fund Modal */}
-      {showFundModal && selectedLoan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xl p-4">
-          <div className="w-full max-w-md glass-card p-8 rounded-3xl border border-white/10 shadow-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-white">Fund Loan #{selectedLoan.id}</h3>
-              <button onClick={() => setShowFundModal(false)} className="text-2xl text-slate-400 hover:text-white transition-colors">&times;</button>
-            </div>
-            
-            <div className="rounded-2xl bg-slate-900/60 p-5 border border-white/5 space-y-2 mb-6">
-              <div className="flex justify-between text-xs text-slate-400">
-                <span>Principal Amount</span>
-                <span className="font-semibold text-white">{selectedLoan.principal} ETH</span>
+      {/* Fund Modal with AnimatePresence */}
+      <AnimatePresence>
+        {showFundModal && selectedLoan && (
+          <motion.div variants={modalBackdrop} initial="hidden" animate="visible" exit="hidden" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xl p-4">
+            <motion.div variants={modalContent} className="w-full max-w-md glass-card p-8 rounded-3xl border border-white/10 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">Fund Loan #{selectedLoan.id}</h3>
+                <button onClick={() => setShowFundModal(false)} className="text-2xl text-slate-400 hover:text-white transition-colors">&times;</button>
               </div>
-              <div className="flex justify-between text-xs text-slate-400 pb-2 border-b border-white/5">
-                <span>Expected Reward</span>
-                <span className="font-bold text-emerald-400">+{Number(selectedLoan.repayment) - Number(selectedLoan.principal)} ETH</span>
+              
+              <div className="rounded-2xl bg-slate-900/60 p-5 border border-white/5 space-y-2 mb-6">
+                <div className="flex justify-between text-xs text-slate-400">
+                  <span>Principal Amount</span>
+                  <span className="font-semibold text-white font-mono">{selectedLoan.principal} ETH</span>
+                </div>
+                <div className="flex justify-between text-xs text-slate-400 pb-2 border-b border-white/5">
+                  <span>Expected Reward</span>
+                  <span className="font-bold text-emerald-400 font-mono">+{Number(selectedLoan.repayment) - Number(selectedLoan.principal)} ETH</span>
+                </div>
+                <div className="flex justify-between items-center pt-1">
+                  <span className="font-bold text-slate-200 text-xs uppercase">Total Return</span>
+                  <span className="text-lg font-black text-blue-400 font-mono">{selectedLoan.repayment} ETH</span>
+                </div>
               </div>
-              <div className="flex justify-between items-center pt-1">
-                <span className="font-bold text-slate-200 text-xs uppercase">Total Return</span>
-                <span className="text-lg font-black text-blue-400">{selectedLoan.repayment} ETH</span>
-              </div>
-            </div>
 
-            <p className="text-xs text-slate-400 mb-6 text-center">
-              You are about to transfer <strong className="text-white font-bold">{selectedLoan.principal} ETH</strong> to the secure escrow contract.
-            </p>
+              <p className="text-xs text-slate-400 mb-6 text-center">
+                You are about to transfer <strong className="text-white font-bold font-mono">{selectedLoan.principal} ETH</strong> to the secure escrow contract.
+              </p>
 
-            <div className="flex gap-3">
-              <button onClick={() => setShowFundModal(false)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs uppercase tracking-wider rounded-2xl transition-colors">Cancel</button>
-              <button onClick={handleFundLoan} disabled={loading} className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-blue-600/30 disabled:opacity-50 transition-colors">
-                {loading ? "Processing..." : "Confirm & Fund"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="flex gap-3">
+                <button onClick={() => setShowFundModal(false)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs uppercase tracking-wider rounded-2xl transition-colors active:scale-95">Cancel</button>
+                <button onClick={handleFundLoan} disabled={loading} className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-blue-600/30 disabled:opacity-50 transition-colors active:scale-95">
+                  {loading ? "Processing..." : "Confirm & Fund"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </SharedLayout>
   );
 }

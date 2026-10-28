@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Wallet, LayoutDashboard, Landmark, ShieldCheck, Cpu } from "lucide-react";
 import { Toaster } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function SharedLayout({ account, onConnect, title, subtitle, children }) {
   const pathname = usePathname();
@@ -16,6 +17,17 @@ export default function SharedLayout({ account, onConnect, title, subtitle, chil
   ];
 
   const shortenAddress = (addr) => (addr ? `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}` : "");
+
+  // Fluid transition variants
+  const pageVariants = {
+    initial: { opacity: 0, y: 15 },
+    animate: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 28, staggerChildren: 0.1 } }
+  };
+
+  const headerVariants = {
+    initial: { opacity: 0, y: -15 },
+    animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } }
+  };
 
   return (
     <>
@@ -31,7 +43,7 @@ export default function SharedLayout({ account, onConnect, title, subtitle, chil
         <aside className="w-72 shrink-0 glass-card border-r border-white/10 hidden lg:flex flex-col justify-between p-6 z-20">
           <div>
             {/* Logo Brand */}
-            <div className="flex items-center gap-3 px-2 mb-10 cursor-pointer" onClick={() => router.push("/borrower")}>
+            <div className="flex items-center gap-3 px-2 mb-10 cursor-pointer transition-transform hover:scale-[1.02]" onClick={() => router.push("/borrower")}>
               <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 to-emerald-400 flex items-center justify-center shadow-lg shadow-blue-500/20">
                 <Cpu className="h-5 w-5 text-white" />
               </div>
@@ -70,7 +82,7 @@ export default function SharedLayout({ account, onConnect, title, subtitle, chil
           </div>
 
           {/* Footer Sidebar info */}
-          <div className="glass-card p-4 rounded-2xl border border-white/5 bg-slate-900/40">
+          <div className="glass-card p-4 rounded-2xl border border-white/5 bg-slate-900/40 transition-colors hover:border-white/10">
             <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
               <span>Smart Contract</span>
               <span className="text-emerald-400 font-mono font-bold">Secure</span>
@@ -83,7 +95,12 @@ export default function SharedLayout({ account, onConnect, title, subtitle, chil
         <div className="flex-1 flex flex-col min-w-0 z-10">
           
           {/* Top Header Navbar */}
-          <header className="glass-card border-b border-white/10 px-8 py-5 flex items-center justify-between sticky top-0 z-30 backdrop-blur-xl">
+          <motion.header 
+            variants={headerVariants}
+            initial="initial"
+            animate="animate"
+            className="glass-card border-b border-white/10 px-8 py-5 flex items-center justify-between sticky top-0 z-30 backdrop-blur-xl"
+          >
             <div>
               <h2 className="text-xl font-black text-white tracking-tight">{title}</h2>
               <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>
@@ -104,7 +121,7 @@ export default function SharedLayout({ account, onConnect, title, subtitle, chil
                 </button>
               )}
             </div>
-          </header>
+          </motion.header>
 
           {/* Mobile Tab Navigation */}
           <div className="flex lg:hidden bg-slate-900/80 border-b border-white/10 px-4 py-3 gap-2 overflow-x-auto">
@@ -124,14 +141,23 @@ export default function SharedLayout({ account, onConnect, title, subtitle, chil
             })}
           </div>
 
-          {/* Dynamic Page Children */}
+          {/* Dynamic Page Children with Framer Motion */}
           <main className="flex-1 p-6 lg:p-10 w-full mx-auto">
-            {children}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={pathname}
+                variants={pageVariants}
+                initial="initial"
+                animate="animate"
+                className="w-full"
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
           </main>
         </div>
       </div>
 
-      {/* Glassmorphism Toaster (Now safely outside the flexbox layout) */}
       <Toaster 
         theme="dark" 
         position="bottom-right" 
