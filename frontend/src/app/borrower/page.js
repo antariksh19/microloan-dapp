@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
+import { toast } from "sonner";
 import SharedLayout from "../../components/SharedLayout";
 import { useWallet } from "@/hooks/useWallet";
 import contractData from "@/constants/contractAddress.json";
@@ -56,11 +57,9 @@ export default function BorrowerDashboard() {
         try {
           const loan = await contract.loans(i);
           
-          // Strict safety check: Skip empty addresses
           if (!loan || loan.borrower === ethers.ZeroAddress) continue;
           
           if (loan.borrower.toLowerCase() === walletAddress.toLowerCase()) {
-            // Force BigInt fallback (0n) to prevent invalid BigNumberish null errors
             const principalWei = loan.principal || 0n;
             const repaymentWei = loan.repaymentAmount || 0n;
             const status = Number(loan.status || 0);
@@ -89,7 +88,12 @@ export default function BorrowerDashboard() {
       }
       setPendingRequests(pending); setActiveLoans(active);
       setStats({ totalBorrowed: ethers.formatEther(totalBorrowedWei), activeCount: active.length, totalDue: ethers.formatEther(totalDueWei) });
-    } catch (err) { setWalletError(err.message || "Failed to fetch data."); } finally { setLoading(false); }
+    } catch (err) { 
+      setWalletError(err.message || "Failed to fetch data."); 
+      toast.error("Failed to sync blockchain data.");
+    } finally { 
+      setLoading(false); 
+    }
   }, [getProvider, switchToSepolia, setWalletError]);
 
   useEffect(() => {
@@ -104,7 +108,11 @@ export default function BorrowerDashboard() {
 
   const handleRequestLoan = async (e) => {
     e.preventDefault();
-    if (!principal || !lenderReward || !dueDate) return setWalletError("Please fill out all fields.");
+    if (!principal || !lenderReward || !dueDate) {
+      toast.error("Please fill out all fields.");
+      return;
+    }
+    
     try {
       setLoading(true); setWalletError("");
       const provider = getProvider(); const signer = await provider.getSigner();
@@ -120,11 +128,18 @@ export default function BorrowerDashboard() {
       const dueDateTimestamp = Math.floor(dateObj.getTime() / 1000);
 
       const tx = await contract.requestLoan(principalWei, repaymentWei, dueDateTimestamp);
+      toast.loading("Transaction pending...", { id: "tx-request" });
       await tx.wait();
-      alert("Loan request submitted successfully!");
+      
+      toast.success("Loan request submitted successfully!", { id: "tx-request" });
       setPrincipal(""); setLenderReward(""); setDueDate(""); setShowRequestModal(false);
       await loadLoans(account);
-    } catch (err) { setWalletError(err.reason || err.message || "Transaction failed."); } finally { setLoading(false); }
+    } catch (err) { 
+      setWalletError(err.reason || err.message || "Transaction failed."); 
+      toast.error(err.reason || "Loan request failed.", { id: "tx-request" });
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const handleWithdraw = async () => {
@@ -132,11 +147,19 @@ export default function BorrowerDashboard() {
       setLoading(true);
       const provider = getProvider(); const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+      
       const tx = await contract.withdrawToBorrower(selectedLoan.id);
+      toast.loading("Processing withdrawal...", { id: "tx-withdraw" });
       await tx.wait();
-      alert(`Funds for Loan #${selectedLoan.id} withdrawn successfully!`);
-      setShowWithdrawModal(false); await loadLoans(account);
-    } catch (err) { alert(err.reason || "Withdrawal failed."); } finally { setLoading(false); }
+      
+      toast.success(`Funds for Loan #${selectedLoan.id} withdrawn successfully!`, { id: "tx-withdraw" });
+      setShowWithdrawModal(false); 
+      await loadLoans(account);
+    } catch (err) { 
+      toast.error(err.reason || "Withdrawal failed.", { id: "tx-withdraw" }); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const handleRepay = async (e) => {
@@ -145,11 +168,18 @@ export default function BorrowerDashboard() {
       setLoading(true);
       const provider = getProvider(); const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+      
       const tx = await contract.repay(selectedLoan.id, { value: ethers.parseEther(Number(repayAmount).toFixed(18)) });
+      toast.loading("Processing repayment...", { id: "tx-repay" });
       await tx.wait();
-      alert(`Loan #${selectedLoan.id} repaid successfully!`);
+      
+      toast.success(`Loan #${selectedLoan.id} repaid successfully!`, { id: "tx-repay" });
       setShowRepayModal(false); setRepayAmount(""); await loadLoans(account);
-    } catch (err) { alert(err.reason || "Repayment failed."); } finally { setLoading(false); }
+    } catch (err) { 
+      toast.error(err.reason || "Repayment failed.", { id: "tx-repay" }); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const getStatusText = (status) => Object.keys(STATUS).find(key => STATUS[key] === status) || "Unknown";

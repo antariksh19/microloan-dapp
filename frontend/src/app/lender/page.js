@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
+import { toast } from "sonner";
 import SharedLayout from "../../components/SharedLayout";
 import { useWallet } from "@/hooks/useWallet";
 import contractData from "@/constants/contractAddress.json";
@@ -45,10 +46,8 @@ export default function LenderDashboard() {
         try {
           const loan = await contract.loans(i);
           
-          // Strict safety check: Skip empty addresses
           if (!loan || loan.borrower === ethers.ZeroAddress) continue;
           
-          // Force BigInt fallback (0n) to prevent invalid BigNumberish null errors
           const principalWei = loan.principal || 0n;
           const repaymentWei = loan.repaymentAmount || 0n;
           const status = Number(loan.status || 0);
@@ -85,7 +84,12 @@ export default function LenderDashboard() {
         activeLoans: investments.filter(l => l.status === STATUS.Funded || l.status === STATUS.Withdrawn).length, 
         expectedEarnings: ethers.formatEther(expectedEarningsWei) 
       });
-    } catch (err) { setWalletError("Failed to fetch data from contract."); } finally { setLoading(false); }
+    } catch (err) { 
+      setWalletError("Failed to fetch data from contract."); 
+      toast.error("Failed to sync blockchain data.");
+    } finally { 
+      setLoading(false); 
+    }
   }, [getProvider, setWalletError]);
 
   useEffect(() => {
@@ -106,12 +110,17 @@ export default function LenderDashboard() {
       const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
       
       const tx = await contract.fundLoan(selectedLoan.id, { value: selectedLoan.principalWei });
+      toast.loading("Funding transaction in progress...", { id: "tx-fund" });
       await tx.wait();
       
-      alert(`Successfully funded Loan #${selectedLoan.id}!`);
+      toast.success(`Successfully funded Loan #${selectedLoan.id}!`, { id: "tx-fund" });
       setShowFundModal(false); 
       await loadLenderData(account);
-    } catch (err) { alert(err.reason || "Funding failed."); } finally { setLoading(false); }
+    } catch (err) { 
+      toast.error(err.reason || "Funding failed.", { id: "tx-fund" }); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const getStatusText = (status) => Object.keys(STATUS).find(key => STATUS[key] === status) || "Unknown";
