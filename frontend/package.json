@@ -9,12 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@rainbow-me/rainbowkit": "^2.2.11",
-    "@solana/kit": "^5.5.1",
-    "@tanstack/react-query": "^5.105.0",
-    "@x402/core": "^2.28.0",
-    "@x402/evm": "^2.28.0",
-    "@x402/svm": "^2.28.0",
     "ethers": "^6.17.0",
     "framer-motion": "^14.7.1",
     "lucide-react": "^1.62.0",
@@ -22,9 +16,7 @@
     "react": "19.2.8",
     "react-countup": "^6.5.3",
     "react-dom": "19.2.8",
-    "sonner": "^2.0.8",
-    "viem": "^2.57.12",
-    "wagmi": "^2.19.5"
+    "sonner": "^2.0.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

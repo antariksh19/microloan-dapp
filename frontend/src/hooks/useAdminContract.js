@@ -78,11 +78,12 @@ export function useAdminContract(wallet) {
 
   const run = useCallback(
     async (action, fnName, args = [], precheck) => {
-      if (busy.current) return;
+      if (busy.current) return false;
       busy.current = true;
       setLastTx(null);
       setPending({ action, stage: "wallet" });
       let hash;
+      let ok = false;
       try {
         const signer = await wallet.getSigner();
         const c = new ethers.Contract(address, MICROLOAN_ABI, signer);
@@ -92,6 +93,7 @@ export function useAdminContract(wallet) {
         setPending({ action, stage: "mining", hash });
         await tx.wait(); // throws if the transaction reverts
         setLastTx({ action, ok: true, hash });
+        ok = true;
       } catch (e) {
         const message = e instanceof StaleStateError ? e.message : describeTxError(e);
         setLastTx({ action, ok: false, hash, message });
@@ -100,6 +102,7 @@ export function useAdminContract(wallet) {
         setPending(null);
         busy.current = false;
       }
+      return ok;
     },
     [address, wallet, refresh]
   );

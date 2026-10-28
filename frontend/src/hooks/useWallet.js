@@ -1,15 +1,21 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import { ethers } from "ethers";
 import { SEPOLIA } from "@/constants/adminConfig";
+
+const noSubscribe = () => () => {};
 
 export function useWallet() {
   const [account, setAccount] = useState("");
   const [chainId, setChainId] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [walletError, setWalletError] = useState("");
-  // null until we are on the client and know whether MetaMask exists.
-  const [hasWallet, setHasWallet] = useState(null);
+  // null during server rendering, then whether MetaMask exists.
+  const hasWallet = useSyncExternalStore(
+    noSubscribe,
+    () => Boolean(window.ethereum),
+    () => null
+  );
 
   // Memoized so consumers' effects don't re-run on every render.
   const getProvider = useCallback(() => {
@@ -37,7 +43,7 @@ export function useWallet() {
               chainId: SEPOLIA.hexChainId,
               chainName: "Sepolia Test Network",
               nativeCurrency: { name: "SepoliaETH", symbol: "ETH", decimals: 18 },
-              rpcUrls: ["https://rpc.sepolia.org"],
+              rpcUrls: ["https://ethereum-sepolia-rpc.publicnode.com"],
               blockExplorerUrls: [SEPOLIA.explorer],
             },
           ],
@@ -68,7 +74,6 @@ export function useWallet() {
 
   useEffect(() => {
     const eth = typeof window !== "undefined" ? window.ethereum : null;
-    setHasWallet(Boolean(eth));
     if (!eth) return;
 
     (async () => {
@@ -100,13 +105,9 @@ export function useWallet() {
     onSepolia: chainId === SEPOLIA.chainId,
     hasWallet,
     connecting,
-    connect: connectWallet,
     connectWallet,
     getSigner,
-    getProvider,
     switchToSepolia,
-    error: walletError,
     walletError,
-    setWalletError,
   };
 }

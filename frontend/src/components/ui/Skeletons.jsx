@@ -1,13 +1,3 @@
-export function SkeletonCard() {
-  return (
-    <div className="glass-card p-6 rounded-3xl relative overflow-hidden border border-white/5 bg-slate-900/40 animate-pulse">
-      <div className="h-3 w-24 bg-slate-800/80 rounded-full mb-5"></div>
-      <div className="h-8 w-32 bg-slate-700/50 rounded-lg mb-3"></div>
-      <div className="h-5 w-20 bg-slate-800/80 rounded-full"></div>
-    </div>
-  );
-}
-
 export function SkeletonTable() {
   return (
     <div className="mb-10 glass-card rounded-3xl overflow-hidden border border-white/10 animate-pulse">
