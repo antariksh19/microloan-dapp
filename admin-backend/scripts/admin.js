@@ -4,30 +4,15 @@
 //   npm run admin -- pause
 //   npm run admin -- unpause
 //   npm run admin -- limit 5          (maximum loan amount in ETH)
+//   npm run admin -- transfer 0xNew   (step 1: current admin nominates a new admin)
+//   npm run admin -- accept           (step 2: run with the NEW admin's PRIVATE_KEY)
 //
 // Reads SEPOLIA_RPC_URL and PRIVATE_KEY (the admin wallet) from admin-backend/.env.
 // Reads the ABI and address from frontend/src/constants, the same files the UI uses.
 
 require("dotenv").config();
-const fs = require("fs");
-const path = require("path");
 const { ethers } = require("ethers");
-
-const CONSTANTS = path.join(__dirname, "..", "..", "frontend", "src", "constants");
-
-function readJson(file) {
-  const text = fs.readFileSync(path.join(CONSTANTS, file), "utf8").trim();
-  return text ? JSON.parse(text) : null;
-}
-
-function loadContract(runner) {
-  const abiFile = readJson("MicroLoanABI.json");
-  const addrFile = readJson("contractAddress.json");
-  const abi = Array.isArray(abiFile) ? abiFile : (abiFile?.abi ?? []);
-  const address = typeof addrFile === "string" ? addrFile : addrFile?.address;
-  if (!ethers.isAddress(address)) throw new Error("No valid address in contractAddress.json");
-  return new ethers.Contract(address, abi, runner);
-}
+const { loadContract } = require("./contract");
 
 async function printStatus(c) {
   const [admin, paused, maxLoanAmount, loanCounter] = await Promise.all([
@@ -63,6 +48,12 @@ async function main() {
   const signer = new ethers.Wallet(PRIVATE_KEY, provider);
   const c = loadContract(signer);
 
+  // The nominee isn't admin yet, so this one runs before the admin check.
+  if (command === "accept") {
+    await send("Accept admin", c.acceptAdmin());
+    return printStatus(c);
+  }
+
   const admin = await c.admin();
   if (admin.toLowerCase() !== signer.address.toLowerCase()) {
     throw new Error(`PRIVATE_KEY is for ${signer.address}, but the admin is ${admin}`);
@@ -81,8 +72,12 @@ async function main() {
     const wei = ethers.parseEther(arg);
     if (wei === 0n) throw new Error("Use an amount above 0. To stop all requests, pause instead.");
     await send("Set max loan", c.setMaxLoanAmount(wei));
+  } else if (command === "transfer") {
+    if (!ethers.isAddress(arg)) throw new Error("Usage: npm run admin -- transfer <newAdminAddress>");
+    await send("Nominate admin", c.transferAdmin(arg));
+    console.log(`Now run "npm run admin -- accept" with ${arg}'s PRIVATE_KEY to finish.\n`);
   } else {
-    throw new Error(`Unknown command "${command}". Use status, pause, unpause or limit.`);
+    throw new Error(`Unknown command "${command}". Use status, pause, unpause, limit, transfer or accept.`);
   }
 
   await printStatus(c);

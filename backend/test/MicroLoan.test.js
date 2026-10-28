@@ -77,9 +77,9 @@ describe("MicroLoan Rules and Edge Cases", function () {
       await expect(microLoan.connect(borrower).requestLoan(PRINCIPAL, PRINCIPAL - 1n, DURATION))
         .to.be.revertedWith("Repayment must cover the principal");
     });
-    it("rejects a zero duration", async function () {
-      await expect(microLoan.connect(borrower).requestLoan(PRINCIPAL, REPAYMENT, 0))
-        .to.be.revertedWith("Duration must be greater than zero");
+    it("rejects a duration under one hour", async function () {
+      await expect(microLoan.connect(borrower).requestLoan(PRINCIPAL, REPAYMENT, 3599))
+        .to.be.revertedWith("Duration must be at least one hour");
     });
     it("rejects a principal above the admin maximum", async function () {
       await expect(microLoan.connect(borrower).requestLoan(ethers.parseEther("6"), ethers.parseEther("6.1"), DURATION))
@@ -125,9 +125,13 @@ describe("MicroLoan Rules and Edge Cases", function () {
       await expect(microLoan.connect(borrower).repay(1, { value: PRINCIPAL }))
         .to.be.revertedWith("Must pay exact repayment amount");
     });
-    it("pays the lender the full repayment", async function () {
-      await expect(microLoan.connect(borrower).repay(1, { value: REPAYMENT }))
+    it("credits the lender the full repayment, which the lender then pulls", async function () {
+      await microLoan.connect(borrower).repay(1, { value: REPAYMENT });
+      expect(await microLoan.pendingWithdrawals(lender.address)).to.equal(REPAYMENT);
+      await expect(microLoan.connect(lender).withdrawPending())
         .to.changeEtherBalance(ethers, lender, REPAYMENT);
+      expect(await microLoan.pendingWithdrawals(lender.address)).to.equal(0n);
+      await expect(microLoan.connect(lender).withdrawPending()).to.be.revertedWith("Nothing to withdraw");
     });
     it("rejects repayment after the due date", async function () {
       await networkHelpers.time.increase(DURATION + 60);
@@ -187,6 +191,75 @@ describe("MicroLoan Rules and Edge Cases", function () {
     it("the limit can be changed and is enforced", async function () {
       await microLoan.connect(admin).setMaxLoanAmount(ethers.parseEther("0.5"));
       await expect(request()).to.be.revertedWith("Requested amount exceeds admin maximum limit");
+    });
+    it("rejects a zero limit", async function () {
+      await expect(microLoan.connect(admin).setMaxLoanAmount(0)).to.be.revertedWith("Limit must be greater than zero");
+    });
+    it("pause does not block withdrawing an already funded loan", async function () {
+      await request();
+      await fundIt();
+      await microLoan.connect(admin).togglePause();
+      await expect(withdrawIt()).to.emit(microLoan, "Withdrawn");
+    });
+    it("hands admin over in two steps", async function () {
+      await expect(microLoan.connect(other).transferAdmin(other.address)).to.be.revertedWith("Caller is not the admin");
+      await microLoan.connect(admin).transferAdmin(other.address);
+      expect(await microLoan.admin()).to.equal(admin.address);
+      await expect(microLoan.connect(lender).acceptAdmin()).to.be.revertedWith("Caller is not the pending admin");
+      await expect(microLoan.connect(other).acceptAdmin())
+        .to.emit(microLoan, "AdminTransferred").withArgs(admin.address, other.address);
+      expect(await microLoan.admin()).to.equal(other.address);
+      expect(await microLoan.pendingAdmin()).to.equal(ethers.ZeroAddress);
+    });
+  });
+
+  describe("loan ids", function () {
+    it("rejects ids that were never created", async function () {
+      await expect(microLoan.connect(other).fund(0, { value: 0 })).to.be.revertedWith("Loan does not exist");
+      await expect(microLoan.connect(other).fund(999, { value: 0 })).to.be.revertedWith("Loan does not exist");
+      await expect(microLoan.connect(other).cancelLoan(1)).to.be.revertedWith("Loan does not exist");
+    });
+  });
+
+  describe("due date", function () {
+    it("starts the clock when the loan is funded, not when it is requested", async function () {
+      await request();
+      expect((await microLoan.loans(1)).dueDate).to.equal(0n);
+      await networkHelpers.time.increase(DURATION * 2);
+      await fundIt();
+      const fundedAt = BigInt(await networkHelpers.time.latest());
+      expect((await microLoan.loans(1)).dueDate).to.equal(fundedAt + BigInt(DURATION));
+      await withdrawIt();
+      await expect(microLoan.connect(borrower).repay(1, { value: REPAYMENT })).to.emit(microLoan, "Repaid");
+    });
+    it("stops the borrower withdrawing after the due date", async function () {
+      await request();
+      await fundIt();
+      await networkHelpers.time.increase(DURATION + 60);
+      await expect(withdrawIt()).to.be.revertedWith("Loan is past due date");
+    });
+  });
+
+  describe("reclaimFunding", function () {
+    beforeEach(async function () { await request(); await fundIt(); });
+    it("rejects before the due date", async function () {
+      await expect(microLoan.connect(lender).reclaimFunding(1)).to.be.revertedWith("Loan is not yet past due");
+    });
+    it("only lets the lender reclaim", async function () {
+      await networkHelpers.time.increase(DURATION + 60);
+      await expect(microLoan.connect(other).reclaimFunding(1)).to.be.revertedWith("Only lender can reclaim");
+    });
+    it("returns the principal if the borrower never withdrew, even while paused", async function () {
+      await networkHelpers.time.increase(DURATION + 60);
+      await microLoan.connect(admin).togglePause();
+      await expect(microLoan.connect(lender).reclaimFunding(1)).to.changeEtherBalance(ethers, lender, PRINCIPAL);
+      expect((await microLoan.loans(1)).status).to.equal(6n);
+      await expect(microLoan.connect(lender).reclaimFunding(1)).to.be.revertedWith("Loan is not funded");
+    });
+    it("is not possible once the borrower has withdrawn", async function () {
+      await withdrawIt();
+      await networkHelpers.time.increase(DURATION + 60);
+      await expect(microLoan.connect(lender).reclaimFunding(1)).to.be.revertedWith("Loan is not funded");
     });
   });
 });

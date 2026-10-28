@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "admin": "node scripts/admin.js"
+    "admin": "node scripts/admin.js",
+    "bot": "node scripts/bot.js"
   },
   "keywords": [],
   "author": "",
@@ -13,7 +13,6 @@
   "type": "commonjs",
   "dependencies": {
     "dotenv": "^18.0.4",
-    "ethers": "^6.17.0",
-    "express": "^5.2.1"
+    "ethers": "^6.17.0"
   }
 }
